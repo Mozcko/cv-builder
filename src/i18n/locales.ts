@@ -6,7 +6,7 @@ export const locales = {
       download: "Descargar PDF",
       visualEditor: "Editor Visual",
       codeEditor: "Código Markdown",
-      editorWarning: "⚠️ Modo Avanzado: Los cambios directos al código no actualizan el formulario visual.",
+      editorWarning: "⚠️ Modo Avanzado: Los cambios directos al código no actualizan el editor visual.",
       preview: "Vista Previa",
       editor: "Editor"
     },
@@ -49,6 +49,8 @@ export const locales = {
       // Otros
       languages: "Idiomas",
       interests: "Intereses",
+      page: "Página",
+      pages: "Páginas",
     },
     actions: {
       add: "+ Agregar",
@@ -64,15 +66,15 @@ export const locales = {
       processing: "Procesando...",
       overlayText: "Generando mejoras con IA...",
       dropdown: {
-        enhance: "✨ Mejorar Redacción",
-        optimize: "🎯 Optimizar para Oferta",
-        translate: "🌐 Traducir (ES/EN)",
-        poweredBy: "Potenciado por Gemini / GPT"
+        enhance: "Mejorar Redacción",
+        optimize: "Optimizar para Oferta",
+        translate: "Traducir (ES/EN)",
+        poweredBy: "Potenciado por Deepseek"
       },
       alerts: {
-        enhance: "✨ IA: He mejorado la redacción de tu perfil profesional.",
-        translate: "🌐 IA: He traducido los campos principales.",
-        optimize: "🎯 IA: He ajustado las keywords para coincidir con el puesto."
+        enhance: "IA: He mejorado la redacción de tu perfil profesional.",
+        translate: "IA: He traducido los campos principales.",
+        optimize: "IA: He ajustado las keywords para coincidir con el puesto."
       },
       jobDescriptionPrompt: "Pega aquí la descripción de la oferta de trabajo para optimizar tu CV:"
     }
@@ -84,7 +86,7 @@ export const locales = {
       download: "Download PDF",
       visualEditor: "Visual Editor",
       codeEditor: "Markdown Code",
-      editorWarning: "⚠️ Advanced Mode: Direct code changes do not update the visual form.",
+      editorWarning: "⚠️ Advanced Mode: Direct code changes do not update the visual editor.",
       preview: "Preview",
       editor: "Editor"
     },
@@ -127,6 +129,8 @@ export const locales = {
       // Others
       languages: "Languages",
       interests: "Interests",
+      page: "Page",
+      pages: "Pages",
     },
     actions: {
       add: "+ Add",
@@ -142,15 +146,15 @@ export const locales = {
       processing: "Processing...",
       overlayText: "Generating improvements with AI...",
       dropdown: {
-        enhance: "✨ Enhance Writing",
-        optimize: "🎯 Optimize for Job Post",
-        translate: "🌐 Translate (ES/EN)",
-        poweredBy: "Powered by Gemini / GPT"
+        enhance: "Enhance Writing",
+        optimize: "Optimize for Job Post",
+        translate: "Translate (ES/EN)",
+        poweredBy: "Powered by Deepseek"
       },
       alerts: {
-        enhance: "✨ AI: I have improved your professional summary.",
-        translate: "🌐 AI: I have translated the main fields.",
-        optimize: "🎯 AI: I have adjusted keywords to match the job post."
+        enhance: "AI: I have improved your professional summary.",
+        translate: "AI: I have translated the main fields.",
+        optimize: "AI: I have adjusted keywords to match the job post."
       },
       jobDescriptionPrompt: "Paste the job description here to optimize your CV:"
     }

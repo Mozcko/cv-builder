@@ -52,12 +52,12 @@ export default function Navbar({
             {/* Toggle de Banderas */}
             <button 
                 onClick={toggleLang}
-                className="relative flex items-center bg-slate-800 border border-slate-600 rounded-full p-0.5 cursor-pointer hover:border-slate-500 transition-all shadow-inner w-13"
+                className="relative flex items-center justify-between w-14 bg-slate-800 border border-slate-600 rounded-full p-1 cursor-pointer hover:border-slate-500 transition-all shadow-inner"
                 title={lang === 'es' ? "Cambiar a Inglés" : "Switch to Spanish"}
             >
-                <div className={`absolute w-6 h-6 bg-slate-600 rounded-full shadow-md transition-all duration-300 ease-out transform ${lang === 'en' ? 'translate-x-6.5' : 'translate-x-0'}`}></div>
-                <div className={`relative z-10 w-6.5 h-6 flex items-center justify-center text-sm transition-opacity duration-300 ${lang === 'es' ? 'opacity-100' : 'opacity-40 grayscale'}`}>🇲🇽</div>
-                <div className={`relative z-10 w-6.5 h-6 flex items-center justify-center text-sm transition-opacity duration-300 ${lang === 'en' ? 'opacity-100' : 'opacity-40 grayscale'}`}>🇺🇸</div>
+                <div className={`absolute left-1 w-6 h-6 bg-slate-600 rounded-full shadow-md transition-all duration-300 ease-out transform ${lang === 'en' ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                <div className={`relative z-10 w-6 h-6 flex items-center justify-center text-sm transition-opacity duration-300 ${lang === 'es' ? 'opacity-100' : 'opacity-40 grayscale'}`}>🇲🇽</div>
+                <div className={`relative z-10 w-6 h-6 flex items-center justify-center text-sm transition-opacity duration-300 ${lang === 'en' ? 'opacity-100' : 'opacity-40 grayscale'}`}>🇺🇸</div>
             </button>
         </div>
         

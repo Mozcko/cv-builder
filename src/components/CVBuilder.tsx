@@ -56,6 +56,15 @@ export default function CVBuilder() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [windowWidth, setWindowWidth] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+
+  // Calcular escala dinámica para aprovechar el espacio en móvil
+  const calculateScale = () => {
+      if (windowWidth >= 1024 || windowWidth === 0) return 1;
+      // Ancho pantalla - 12px (margen mínimo) / Ancho A4 (794px)
+      return Math.min(1, (windowWidth - 12) / 794);
+  };
+  const scale = calculateScale();
 
   // Inicialización
   useEffect(() => {
@@ -81,6 +90,35 @@ export default function CVBuilder() {
     }
   }, [cvData, editMode, lang]);
 
+  // Cálculo de páginas en tiempo real
+  useEffect(() => {
+    const calculatePages = () => {
+        const element = document.getElementById('cv-pdf-container');
+        if (!element) return;
+        
+        // Altura total del contenido
+        const fullHeight = element.scrollHeight;
+        // Calculamos píxeles por cm basándonos en el ancho conocido (21cm)
+        const pxPerCm = element.offsetWidth / 21;
+        // Altura de una página A4 (29.7cm) en píxeles
+        const pageHeight = pxPerCm * 29.7;
+        
+        // Calculamos páginas (con tolerancia mayor para evitar falsos positivos por márgenes/bordes)
+        const count = Math.ceil((fullHeight - 10) / pageHeight);
+        setPageCount(Math.max(1, count));
+    };
+
+    const observer = new ResizeObserver(calculatePages);
+    const element = document.getElementById('cv-pdf-container');
+    if (element) {
+        observer.observe(element);
+        // Cálculo inicial con pequeño delay para asegurar renderizado
+        setTimeout(calculatePages, 100);
+    }
+
+    return () => observer.disconnect();
+  }, [markdown, scale]);
+
   // HANDLERS
   const handleDataChange = (newData: CVData) => setRawData(newData);
   
@@ -89,7 +127,107 @@ export default function CVBuilder() {
       setCustomCSS(theme.css);
   };
 
-  const handlePrint = () => window.print();
+  const handleDownloadPDF = async () => {
+    // 1. Asegurar que estamos en la pestaña de vista previa (para móviles)
+    if (mobileTab === 'editor' && windowWidth < 1024) {
+        setMobileTab('preview');
+        // Esperar a que el DOM se actualice y el elemento sea visible
+        await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    const element = document.getElementById('cv-pdf-container');
+    if (!element) return;
+
+    try {
+        // Importación dinámica robusta
+        const html2pdfModule = await import('html2pdf.js');
+        const html2pdf = html2pdfModule.default || html2pdfModule;
+        
+        // --- SANITIZACIÓN DEL DOM PARA HTML2CANVAS ---
+        // Clonamos el nodo para "aplanar" los estilos y convertir colores modernos (oklch) a RGB
+        // y eliminar clases de Tailwind que confunden al parser de html2canvas.
+        const clone = element.cloneNode(true) as HTMLElement;
+        
+        // Contenedor temporal fuera de pantalla
+        const container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '21cm'; 
+        document.body.appendChild(container);
+        container.appendChild(clone);
+
+        // Helper para resolver colores a RGB usando Canvas (soporta oklch si el navegador lo soporta)
+        const canvas = document.createElement('canvas');
+        canvas.width = 1; canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        const resolveColor = (color: string) => {
+            if (!ctx || !color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return color;
+            ctx.clearRect(0, 0, 1, 1);
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, 1, 1);
+            const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+            return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+        };
+
+        // Copiar estilos computados del original al clon
+        const applyComputedStyles = (source: HTMLElement, target: HTMLElement) => {
+            const computed = window.getComputedStyle(source);
+            // Propiedades críticas
+            target.style.boxSizing = computed.boxSizing;
+            target.style.backgroundColor = resolveColor(computed.backgroundColor);
+            target.style.color = resolveColor(computed.color);
+            target.style.fontFamily = computed.fontFamily;
+            target.style.fontSize = computed.fontSize;
+            target.style.fontWeight = computed.fontWeight;
+            target.style.lineHeight = computed.lineHeight;
+            target.style.textAlign = computed.textAlign;
+            target.style.border = computed.border;
+            target.style.padding = computed.padding;
+            target.style.margin = computed.margin;
+            target.style.display = computed.display;
+            
+            // Limpiar clases para evitar parsing de CSS externo
+            target.removeAttribute('class');
+        };
+
+        // Aplicar a la raíz
+        applyComputedStyles(element, clone);
+        clone.style.transform = 'none'; // Resetear escala
+        clone.style.boxShadow = 'none';
+        clone.style.margin = '0';
+        clone.style.minHeight = '29.65cm'; // Hack: Reducir ligeramente para evitar página extra por redondeo
+
+        // Aplicar a todos los descendientes
+        const sourceElements = element.querySelectorAll('*');
+        const targetElements = clone.querySelectorAll('*');
+        sourceElements.forEach((el, i) => {
+            if (targetElements[i]) applyComputedStyles(el as HTMLElement, targetElements[i] as HTMLElement);
+        });
+
+        // Hack: Reducir padding superior del contenido para ganar espacio y evitar página extra
+        if (clone.firstElementChild) {
+            (clone.firstElementChild as HTMLElement).style.paddingTop = '0.2cm';
+        }
+
+        const opt = {
+            margin: 0,
+            filename: `${cvData.personal.name.replace(/\s+/g, '_')}_CV.pdf`,
+            image: { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794 }, // windowWidth fuerza layout de escritorio
+            jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+        };
+
+        await html2pdf().set(opt).from(clone).save();
+        
+        // Limpieza
+        document.body.removeChild(container);
+
+    } catch (error: any) {
+        console.error("Error generando PDF:", error);
+        alert(`Error al generar el PDF: ${error.message || error}.`);
+    }
+  };
 
   const handleReset = () => {
     if(confirm(t.actions.confirmReset)){
@@ -132,6 +270,12 @@ export default function CVBuilder() {
             })
         });
 
+        // Verificar si la respuesta es JSON antes de parsear
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("La respuesta del servidor no es válida (posible error 500 o 404).");
+        }
+
         if (!response.ok) {
             throw new Error(`Error en la API: ${response.statusText}`);
         }
@@ -167,18 +311,10 @@ export default function CVBuilder() {
     Prism.highlight(code, Prism.languages.markdown, 'markdown')
   );
 
-  // Calcular escala dinámica para aprovechar el espacio en móvil
-  const calculateScale = () => {
-      if (windowWidth >= 1024 || windowWidth === 0) return 1;
-      // Ancho pantalla - 12px (margen mínimo) / Ancho A4 (794px)
-      return Math.min(1, (windowWidth - 12) / 794);
-  };
-  const scale = calculateScale();
-
   if (!isMounted) return <div className="flex h-screen items-center justify-center bg-app-bg text-slate-400">Cargando...</div>;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-app-bg font-sans text-text-main">
+    <div className="flex flex-col h-dvh bg-app-bg font-sans text-text-main print:bg-white print:h-auto">
       
       <Navbar 
         t={t}
@@ -187,14 +323,14 @@ export default function CVBuilder() {
         editMode={editMode}
         setEditMode={setEditMode}
         onReset={handleReset}
-        onPrint={handlePrint}
+        onPrint={handleDownloadPDF}
         isAiProcessing={isAiProcessing}
         onAiAction={handleAiAction}
         currentTheme={activeThemeId}
         onThemeChange={handleThemeChange}
       />
 
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden print:overflow-visible print:h-auto print:block">
         
         {/* PANEL IZQUIERDO: EDITOR */}
         <section className={`
@@ -249,17 +385,31 @@ export default function CVBuilder() {
         <section className={`
             w-full lg:w-7/12 xl:w-8/12 
             bg-app-bg overflow-auto print:w-full print:bg-white print:overflow-visible custom-scrollbar relative flex items-start justify-center min-w-0
-            ${mobileTab === 'preview' ? 'flex-1' : 'hidden lg:flex'} lg:h-auto
+            ${mobileTab === 'preview' ? 'flex-1' : 'hidden lg:flex'} lg:h-auto print:flex!
         `}>
            
            {/* Inyección de CSS dinámico */}
            <style>{customCSS}</style>
 
+           {/* Indicador de Páginas */}
+           <div className="absolute top-4 right-6 z-10 print:hidden pointer-events-none">
+               <div className="bg-slate-800/90 backdrop-blur text-slate-300 text-xs font-bold px-3 py-1.5 rounded-full border border-slate-600 shadow-lg flex items-center gap-2">
+                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-blue-400">
+                       <path fillRule="evenodd" d="M4.5 2A1.5 1.5 0 003 3.5v13A1.5 1.5 0 004.5 18h11a1.5 1.5 0 001.5-1.5V7.621a1.5 1.5 0 00-.44-1.06l-4.12-4.122A1.5 1.5 0 0011.378 2H4.5zm2.25 8.5a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5zm0 3a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z" clipRule="evenodd" />
+                   </svg>
+                   {/* @ts-ignore: Las claves page/pages acaban de ser añadidas */}
+                   <span>{pageCount} {pageCount === 1 ? t.labels.page : t.labels.pages}</span>
+               </div>
+           </div>
+
            <div className="py-6 md:py-12 w-full flex justify-center print:p-0">
                {/* Hoja A4 Simulada */}
                <div 
-                    className="bg-white text-slate-900 shadow-2xl print:shadow-none !print:w-full !print:transform-none !print:mb-0 relative origin-top transition-transform duration-300"
+                    id="cv-pdf-container"
+                    className="shadow-2xl print:shadow-none !print:w-full !print:transform-none !print:mb-0 relative origin-top transition-transform duration-300"
                     style={{ 
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
                         width: '21cm',
                         minHeight: '29.7cm',
                         transform: `scale(${scale})`,
@@ -268,7 +418,7 @@ export default function CVBuilder() {
                         marginRight: scale === 1 ? 0 : `-${21 * (1 - scale) / 2}cm`
                     }}
                >
-                 <div className="cv-preview-content p-[1cm] print:p-0 h-full">
+                 <div className="cv-preview-content p-[1cm] h-full">
                     <ReactMarkdown rehypePlugins={[rehypeRaw]}>
                         {markdown}
                     </ReactMarkdown>
@@ -278,7 +428,7 @@ export default function CVBuilder() {
         </section>
 
         {/* BARRA DE NAVEGACIÓN MÓVIL (SOLO VISIBLE EN PANTALLAS PEQUEÑAS) */}
-        <div className="lg:hidden bg-slate-800 border-t border-slate-700 flex text-xs font-bold z-50 shrink-0 safe-area-pb">
+        <div className="lg:hidden print:hidden bg-slate-800 border-t border-slate-700 flex text-xs font-bold z-50 shrink-0 safe-area-pb">
             <button 
                 onClick={() => setMobileTab('editor')}
                 className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'editor' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}

@@ -3,12 +3,12 @@ import OpenAI from 'openai';
 
 export const prerender = false;
 
-const deepseek = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: import.meta.env.DEEPSEEK_API_KEY,
-});
-
 export const POST: APIRoute = async ({ request }) => {
+  const deepseek = new OpenAI({
+    baseURL: 'https://api.deepseek.com',
+    apiKey: import.meta.env.DEEPSEEK_API_KEY,
+  });
+
   try {
     const body = await request.json();
     const { action, cvData, jobDescription, lang } = body;
