@@ -193,7 +193,7 @@ export default function CVForm({ data, onChange, t }: Props) {
 
 
   return (
-    <div className="p-3 md:p-6 space-y-6 md:space-y-8 pb-24">
+    <div className="p-3 md:p-6 space-y-6 md:space-y-8 pb-4">
       
       {/* 1. SECCIÓN PERSONAL */}
       <section>

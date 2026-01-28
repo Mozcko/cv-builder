@@ -45,6 +45,8 @@
 
 .cv-preview-content table {
     margin-top: 0.5rem;
+    width: 100%;
+    border-collapse: collapse;
 }
 
 /* Negritas más oscuras */
@@ -61,6 +63,7 @@
 .cv-preview-content td:last-child {
     color: #64748b;
     font-weight: 500;
+    text-align: right;
 }
 
 /* Bullets personalizados */

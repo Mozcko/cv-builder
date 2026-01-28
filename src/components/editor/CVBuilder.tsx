@@ -57,6 +57,12 @@ export default function CVBuilder() {
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [windowWidth, setWindowWidth] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  
+  // ESTADO PARA PREVIEW PDF REAL
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [isStale, setIsStale] = useState(true); // Control de cambios para optimizar
+  const sourceRef = React.useRef<HTMLDivElement>(null);
 
   // Calcular escala dinámica para aprovechar el espacio en móvil
   const calculateScale = () => {
@@ -71,9 +77,11 @@ export default function CVBuilder() {
     setIsMounted(true);
     setMarkdown(generateMarkdown(cvData, lang));
     
-    // Asegurar que haya un CSS cargado
-    if (!customCSS) {
-        setCustomCSS(getThemeById(activeThemeId).css);
+    // Sincronizar CSS: Si editas el archivo .css en VS Code, actualizamos la vista previa
+    // (Solo si estás en modo visual, para no sobrescribir ediciones manuales en el navegador)
+    const theme = getThemeById(activeThemeId);
+    if (editMode === 'form' && theme && theme.css !== customCSS) {
+        setCustomCSS(theme.css);
     }
 
     // Listener para ajustar la escala del CV en móviles
@@ -90,34 +98,27 @@ export default function CVBuilder() {
     }
   }, [cvData, editMode, lang]);
 
-  // Cálculo de páginas en tiempo real
+  // GENERACIÓN AUTOMÁTICA DE PREVIEW (Debounced)
   useEffect(() => {
-    const calculatePages = () => {
-        const element = document.getElementById('cv-pdf-container');
-        if (!element) return;
-        
-        // Altura total del contenido
-        const fullHeight = element.scrollHeight;
-        // Calculamos píxeles por cm basándonos en el ancho conocido (21cm)
-        const pxPerCm = element.offsetWidth / 21;
-        // Altura de una página A4 (29.7cm) en píxeles
-        const pageHeight = pxPerCm * 29.7;
-        
-        // Calculamos páginas (con tolerancia mayor para evitar falsos positivos por márgenes/bordes)
-        const count = Math.ceil((fullHeight - 10) / pageHeight);
-        setPageCount(Math.max(1, count));
-    };
+    setIsStale(true); // Marcar como obsoleto cuando cambia el contenido
+  }, [markdown, customCSS]);
 
-    const observer = new ResizeObserver(calculatePages);
-    const element = document.getElementById('cv-pdf-container');
-    if (element) {
-        observer.observe(element);
-        // Cálculo inicial con pequeño delay para asegurar renderizado
-        setTimeout(calculatePages, 100);
-    }
+  useEffect(() => {
+    const isVisible = windowWidth >= 1024 || mobileTab === 'preview';
+    // Optimización: Solo generar si es visible Y el contenido ha cambiado (isStale)
+    if (!isVisible || !isStale) return;
 
-    return () => observer.disconnect();
-  }, [markdown, scale]);
+    // En móvil (al cambiar de tab) feedback rápido (500ms). En desktop (al escribir) debounce largo (2s).
+    const delay = windowWidth < 1024 ? 500 : 2000;
+
+    const timer = setTimeout(() => {
+        if (sourceRef.current) {
+            generatePDF('preview');
+        }
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [markdown, customCSS, mobileTab, windowWidth, isStale]); 
 
   // HANDLERS
   const handleDataChange = (newData: CVData) => setRawData(newData);
@@ -127,16 +128,19 @@ export default function CVBuilder() {
       setCustomCSS(theme.css);
   };
 
-  const handleDownloadPDF = async () => {
+  const generatePDF = async (mode: 'save' | 'preview') => {
     // 1. Asegurar que estamos en la pestaña de vista previa (para móviles)
-    if (mobileTab === 'editor' && windowWidth < 1024) {
+    if (mode === 'save' && mobileTab === 'editor' && windowWidth < 1024) {
         setMobileTab('preview');
         // Esperar a que el DOM se actualice y el elemento sea visible
         await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    const element = document.getElementById('cv-pdf-container');
+    // Usamos el contenedor oculto (sourceRef) que tiene todo el contenido continuo
+    const element = sourceRef.current;
     if (!element) return;
+
+    if (mode === 'preview') setIsPdfLoading(true);
 
     try {
         // Importación dinámica robusta
@@ -160,7 +164,7 @@ export default function CVBuilder() {
         // Helper para resolver colores a RGB usando Canvas (soporta oklch si el navegador lo soporta)
         const canvas = document.createElement('canvas');
         canvas.width = 1; canvas.height = 1;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const resolveColor = (color: string) => {
             if (!ctx || !color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return color;
             ctx.clearRect(0, 0, 1, 1);
@@ -182,10 +186,38 @@ export default function CVBuilder() {
             target.style.fontWeight = computed.fontWeight;
             target.style.lineHeight = computed.lineHeight;
             target.style.textAlign = computed.textAlign;
-            target.style.border = computed.border;
+            
+            // Descomponer bordes para evitar problemas con colores modernos (oklch) en shorthands
+            target.style.borderTopWidth = computed.borderTopWidth;
+            target.style.borderTopStyle = computed.borderTopStyle;
+            target.style.borderTopColor = resolveColor(computed.borderTopColor);
+            target.style.borderRightWidth = computed.borderRightWidth;
+            target.style.borderRightStyle = computed.borderRightStyle;
+            target.style.borderRightColor = resolveColor(computed.borderRightColor);
+            target.style.borderBottomWidth = computed.borderBottomWidth;
+            target.style.borderBottomStyle = computed.borderBottomStyle;
+            target.style.borderBottomColor = resolveColor(computed.borderBottomColor);
+            target.style.borderLeftWidth = computed.borderLeftWidth;
+            target.style.borderLeftStyle = computed.borderLeftStyle;
+            target.style.borderLeftColor = resolveColor(computed.borderLeftColor);
+
             target.style.padding = computed.padding;
             target.style.margin = computed.margin;
             target.style.display = computed.display;
+            
+            // Propiedades de Layout y Flexbox (Críticas para alineación)
+            target.style.width = computed.width;
+            target.style.minWidth = computed.minWidth;
+            target.style.minHeight = computed.minHeight;
+            target.style.maxWidth = computed.maxWidth;
+            target.style.whiteSpace = computed.whiteSpace;
+            target.style.verticalAlign = computed.verticalAlign;
+            target.style.borderCollapse = computed.borderCollapse;
+            target.style.flexDirection = computed.flexDirection;
+            target.style.justifyContent = computed.justifyContent;
+            target.style.alignItems = computed.alignItems;
+            target.style.flexGrow = computed.flexGrow;
+            target.style.flexShrink = computed.flexShrink;
             
             // Limpiar clases para evitar parsing de CSS externo
             target.removeAttribute('class');
@@ -195,8 +227,13 @@ export default function CVBuilder() {
         applyComputedStyles(element, clone);
         clone.style.transform = 'none'; // Resetear escala
         clone.style.boxShadow = 'none';
+        clone.style.opacity = '1'; // Asegurar que sea visible
+        clone.style.position = 'static'; // Quitar absolute si lo tiene
+        clone.style.filter = 'none'; // Eliminar drop-shadow del PDF
         clone.style.margin = '0';
-        clone.style.minHeight = '29.65cm'; // Hack: Reducir ligeramente para evitar página extra por redondeo
+        clone.style.backgroundImage = 'none'; // Eliminar guías de página del PDF
+        clone.style.backgroundColor = '#ffffff'; // Asegurar fondo blanco en el PDF
+        clone.style.width = '21cm';
 
         // Aplicar a todos los descendientes
         const sourceElements = element.querySelectorAll('*');
@@ -205,28 +242,48 @@ export default function CVBuilder() {
             if (targetElements[i]) applyComputedStyles(el as HTMLElement, targetElements[i] as HTMLElement);
         });
 
-        // Hack: Reducir padding superior del contenido para ganar espacio y evitar página extra
-        if (clone.firstElementChild) {
-            (clone.firstElementChild as HTMLElement).style.paddingTop = '0.2cm';
-        }
+        // Eliminar padding del contenedor clonado para que html2pdf use sus propios márgenes
+        clone.style.padding = '0';
 
         const opt = {
-            margin: 0,
+            margin: 10, // Margen de 1cm (10mm) para evitar que el texto toque el borde
             filename: `${cvData.personal.name.replace(/\s+/g, '_')}_CV.pdf`,
             image: { type: 'jpeg' as const, quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 794 }, // windowWidth fuerza layout de escritorio
+            html2canvas: { 
+                scale: mode === 'save' ? 2 : 1, // Optimización: Escala 1 para preview es más rápida
+                useCORS: true, 
+                logging: false, 
+                windowWidth: 794 
+            }, 
             jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
         };
 
-        await html2pdf().set(opt).from(clone).save();
+        const worker = html2pdf().set(opt).from(clone).toPdf();
+        
+        // Actualizar contador de páginas real
+        worker.get('pdf').then((pdf: any) => {
+            setPageCount(pdf.internal.getNumberOfPages());
+        });
+
+        if (mode === 'save') {
+            await worker.save();
+        } else {
+            const url = await worker.output('bloburl');
+            setPdfUrl((prev) => {
+                if (prev) URL.revokeObjectURL(prev); // Limpiar memoria
+                return url;
+            });
+        }
+        setIsStale(false); // Marcar como actualizado para evitar regeneraciones innecesarias
         
         // Limpieza
         document.body.removeChild(container);
 
     } catch (error: any) {
         console.error("Error generando PDF:", error);
-        alert(`Error al generar el PDF: ${error.message || error}.`);
+        if (mode === 'save') alert(`Error al generar el PDF: ${error.message || error}.`);
     }
+    if (mode === 'preview') setIsPdfLoading(false);
   };
 
   const handleReset = () => {
@@ -314,7 +371,7 @@ export default function CVBuilder() {
   if (!isMounted) return <div className="flex h-screen items-center justify-center bg-app-bg text-slate-400">Cargando...</div>;
 
   return (
-    <div className="flex flex-col h-dvh bg-app-bg font-sans text-text-main print:bg-white print:h-auto">
+    <div className="flex flex-col h-dvh bg-app-bg font-sans text-text-main print:bg-white print:h-auto overflow-hidden relative">
       
       <Navbar 
         t={t}
@@ -323,7 +380,7 @@ export default function CVBuilder() {
         editMode={editMode}
         setEditMode={setEditMode}
         onReset={handleReset}
-        onPrint={handleDownloadPDF}
+        onPrint={() => generatePDF('save')}
         isAiProcessing={isAiProcessing}
         onAiAction={handleAiAction}
         currentTheme={activeThemeId}
@@ -352,7 +409,7 @@ export default function CVBuilder() {
 
           {editMode === 'form' ? (
               // MODO VISUAL
-              <div className="overflow-y-auto custom-scrollbar h-full">
+              <div className="overflow-y-auto custom-scrollbar h-full pb-28 lg:pb-0">
                   <CVForm data={cvData} onChange={handleDataChange} t={t} />
               </div>
           ) : (
@@ -362,7 +419,7 @@ export default function CVBuilder() {
                       {t.header.editorWarning}
                   </div>
                   
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 lg:pb-4">
                     <Editor
                       value={markdown}
                       onValueChange={(code) => setMarkdown(code)}
@@ -384,8 +441,8 @@ export default function CVBuilder() {
         {/* PANEL DERECHO: PREVIEW */}
         <section className={`
             w-full lg:w-7/12 xl:w-8/12 
-            bg-app-bg overflow-auto print:w-full print:bg-white print:overflow-visible custom-scrollbar relative flex items-start justify-center min-w-0
-            ${mobileTab === 'preview' ? 'flex-1' : 'hidden lg:flex'} lg:h-auto print:flex!
+            bg-app-bg overflow-hidden print:w-full print:bg-white print:overflow-visible custom-scrollbar relative flex items-center justify-center min-w-0
+            ${mobileTab === 'preview' ? 'flex-1' : 'hidden lg:flex'} lg:h-full print:flex!
         `}>
            
            {/* Inyección de CSS dinámico */}
@@ -402,51 +459,65 @@ export default function CVBuilder() {
                </div>
            </div>
 
-           <div className="py-6 md:py-12 w-full flex justify-center print:p-0">
-               {/* Hoja A4 Simulada */}
-               <div 
-                    id="cv-pdf-container"
-                    className="shadow-2xl print:shadow-none !print:w-full !print:transform-none !print:mb-0 relative origin-top transition-transform duration-300"
-                    style={{ 
-                        backgroundColor: '#ffffff',
-                        color: '#0f172a',
-                        width: '21cm',
-                        minHeight: '29.7cm',
-                        transform: `scale(${scale})`,
-                        marginBottom: scale === 1 ? 0 : `-${29.7 * (1 - scale)}cm`,
-                        marginLeft: scale === 1 ? 0 : `-${21 * (1 - scale) / 2}cm`,
-                        marginRight: scale === 1 ? 0 : `-${21 * (1 - scale) / 2}cm`
-                    }}
-               >
-                 <div className="cv-preview-content p-[1cm] h-full">
-                    <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                        {markdown}
-                    </ReactMarkdown>
-                 </div>
-               </div>
+           {/* CONTENEDOR OCULTO: Fuente de verdad para cálculos y generación de PDF */}
+           <div 
+                ref={sourceRef}
+                className="cv-preview-content absolute top-0 left-0 -z-50 opacity-0 pointer-events-none"
+                style={{ width: '21cm', padding: '1cm', margin: 0 }}
+           >
+                <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                    {markdown}
+                </ReactMarkdown>
+           </div>
+
+           {/* VISTA PREVIA PDF REAL */}
+           <div className="absolute top-0 left-0 right-0 bottom-28 lg:inset-0 flex flex-col items-center justify-center bg-slate-900/50 z-0 overflow-hidden">
+               
+               {/* Loading Overlay */}
+               {isPdfLoading && (
+                   <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-900/20 backdrop-blur-[1px]">
+                       <div className="bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg text-xs font-bold flex items-center gap-2">
+                           <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                           </svg>
+                           Actualizando vista previa...
+                       </div>
+                   </div>
+               )}
+
+               {pdfUrl ? (
+                   <iframe 
+                        src={`${pdfUrl}#toolbar=0&view=${windowWidth < 1024 ? 'FitH' : 'FitV'}`} 
+                        className="w-full h-full border-none shadow-2xl relative z-0" 
+                        title="CV Preview"
+                   />
+               ) : (
+                   <div className="text-slate-400 text-sm">Generando documento...</div>
+               )}
            </div>
         </section>
 
-        {/* BARRA DE NAVEGACIÓN MÓVIL (SOLO VISIBLE EN PANTALLAS PEQUEÑAS) */}
-        <div className="lg:hidden print:hidden bg-slate-800 border-t border-slate-700 flex text-xs font-bold z-50 shrink-0 safe-area-pb">
-            <button 
-                onClick={() => setMobileTab('editor')}
-                className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'editor' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                <span>{t.header.editor}</span>
-            </button>
-            <div className="w-px bg-slate-700 my-2"></div>
-            <button 
-                onClick={() => setMobileTab('preview')}
-                className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'preview' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                <span>{t.header.preview}</span>
-            </button>
-        </div>
-
       </main>
+
+      {/* BARRA DE NAVEGACIÓN MÓVIL (SOLO VISIBLE EN PANTALLAS PEQUEÑAS) */}
+      <div className="lg:hidden print:hidden bg-slate-800 border-t border-slate-700 flex text-xs font-bold shrink-0 safe-area-pb shadow-2xl fixed bottom-0 left-0 right-0 z-50">
+          <button 
+              onClick={() => setMobileTab('editor')}
+              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'editor' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              <span>{t.header.editor}</span>
+          </button>
+          <div className="w-px bg-slate-700 my-2"></div>
+          <button 
+              onClick={() => setMobileTab('preview')}
+              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'preview' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              <span>{t.header.preview}</span>
+          </button>
+      </div>
     </div>
   );
 }

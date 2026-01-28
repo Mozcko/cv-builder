@@ -4,6 +4,24 @@
     color: #1a1a1a;
     line-height: 1.3;
     font-size: 11pt; /* Tamaño de letra académico estándar */
+    box-sizing: border-box;
+    padding: 1cm; /* Simula el margen de 1cm (10mm) configurado en la generación del PDF */
+}
+
+/* Ajustes para impresión */
+@media print {
+    @page {
+        margin: 1cm;
+    }
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    .cv-preview-content {
+        width: 100%;
+        max-width: none;
+        padding: 0;
+    }
 }
 
 /* Header centrado y clásico */
@@ -35,21 +53,41 @@
 
 /* Tablas muy compactas */
 .cv-preview-content table {
+    width: 100%;
+    display: block;
     margin-bottom: 2px;
+}
+
+.cv-preview-content tbody {
+    display: block;
+    width: 100%;
+}
+
+.cv-preview-content tr {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    align-items: baseline;
 }
 
 .cv-preview-content td {
     padding-bottom: 0;
+    display: block;
 }
 
 .cv-preview-content td:first-child {
     font-weight: bold;
     font-size: 11pt;
+    text-align: left;
+    flex: 1;
 }
 
 .cv-preview-content td:last-child {
     font-style: italic;
     font-size: 11pt;
+    text-align: right;
+    white-space: nowrap; /* Evita que la fecha se divida en dos líneas */
+    flex: 0 0 auto;
 }
 
 /* Listas ajustadas */
@@ -62,4 +100,15 @@
 .cv-preview-content li {
     margin-bottom: 2px;
     text-align: justify;
+}
+
+/* Evitar cortes de página dentro de elementos */
+.cv-preview-content p,
+.cv-preview-content li,
+.cv-preview-content h1,
+.cv-preview-content h2,
+.cv-preview-content h3,
+.cv-preview-content tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
 }

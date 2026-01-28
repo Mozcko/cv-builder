@@ -45,6 +45,8 @@
 
 .cv-preview-content table {
     margin-bottom: 0.5rem;
+    width: 100%;
+    border-collapse: collapse;
 }
 
 .cv-preview-content td:first-child {
@@ -56,6 +58,7 @@
 .cv-preview-content td:last-child {
     color: #64748b;
     font-size: 0.9em;
+    text-align: right;
 }
 
 .cv-preview-content ul {
