@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -22,7 +22,6 @@ export default function CVBuilder() {
   const [rawData, setRawData] = useLocalStorage<CVData>('cv-data', initialCVData);
   
   // 2. VALIDAR SCHEMA (ANTI-CRASH)
-  // Detecta si los datos guardados son de una versión vieja (strings en lugar de arrays)
   const cvData = useMemo(() => {
     const isOldSchema = 
         !Array.isArray(rawData.skills) || 
@@ -62,29 +61,25 @@ export default function CVBuilder() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [isStale, setIsStale] = useState(true); // Control de cambios para optimizar
-  const sourceRef = React.useRef<HTMLDivElement>(null);
+  const sourceRef = useRef<HTMLDivElement>(null);
 
   // Calcular escala dinámica para aprovechar el espacio en móvil
   const calculateScale = () => {
       if (windowWidth >= 1024 || windowWidth === 0) return 1;
-      // Ancho pantalla - 12px (margen mínimo) / Ancho A4 (794px)
       return Math.min(1, (windowWidth - 12) / 794);
   };
-  const scale = calculateScale();
+  // Nota: scale se usa internamente en html2canvas config, no directamente en render aquí.
 
   // Inicialización
   useEffect(() => {
     setIsMounted(true);
     setMarkdown(generateMarkdown(cvData, lang));
     
-    // Sincronizar CSS: Si editas el archivo .css en VS Code, actualizamos la vista previa
-    // (Solo si estás en modo visual, para no sobrescribir ediciones manuales en el navegador)
     const theme = getThemeById(activeThemeId);
     if (editMode === 'form' && theme && theme.css !== customCSS) {
         setCustomCSS(theme.css);
     }
 
-    // Listener para ajustar la escala del CV en móviles
     const handleResize = () => setWindowWidth(window.innerWidth);
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -100,15 +95,13 @@ export default function CVBuilder() {
 
   // GENERACIÓN AUTOMÁTICA DE PREVIEW (Debounced)
   useEffect(() => {
-    setIsStale(true); // Marcar como obsoleto cuando cambia el contenido
+    setIsStale(true); 
   }, [markdown, customCSS]);
 
   useEffect(() => {
     const isVisible = windowWidth >= 1024 || mobileTab === 'preview';
-    // Optimización: Solo generar si es visible Y el contenido ha cambiado (isStale)
     if (!isVisible || !isStale) return;
 
-    // En móvil (al cambiar de tab) feedback rápido (500ms). En desktop (al escribir) debounce largo (2s).
     const delay = windowWidth < 1024 ? 500 : 2000;
 
     const timer = setTimeout(() => {
@@ -129,30 +122,24 @@ export default function CVBuilder() {
   };
 
   const generatePDF = async (mode: 'save' | 'preview') => {
-    // 1. Asegurar que estamos en la pestaña de vista previa (para móviles)
+    // Asegurar que estamos en la pestaña correcta antes de generar si es save
     if (mode === 'save' && mobileTab === 'editor' && windowWidth < 1024) {
         setMobileTab('preview');
-        // Esperar a que el DOM se actualice y el elemento sea visible
         await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    // Usamos el contenedor oculto (sourceRef) que tiene todo el contenido continuo
     const element = sourceRef.current;
     if (!element) return;
 
     if (mode === 'preview') setIsPdfLoading(true);
 
     try {
-        // Importación dinámica robusta
         const html2pdfModule = await import('html2pdf.js');
         const html2pdf = html2pdfModule.default || html2pdfModule;
         
-        // --- SANITIZACIÓN DEL DOM PARA HTML2CANVAS ---
-        // Clonamos el nodo para "aplanar" los estilos y convertir colores modernos (oklch) a RGB
-        // y eliminar clases de Tailwind que confunden al parser de html2canvas.
+        // --- SANITIZACIÓN DEL DOM ---
         const clone = element.cloneNode(true) as HTMLElement;
         
-        // Contenedor temporal fuera de pantalla
         const container = document.createElement('div');
         container.style.position = 'absolute';
         container.style.left = '-9999px';
@@ -161,7 +148,7 @@ export default function CVBuilder() {
         document.body.appendChild(container);
         container.appendChild(clone);
 
-        // Helper para resolver colores a RGB usando Canvas (soporta oklch si el navegador lo soporta)
+        // Helper para resolver colores a RGB 
         const canvas = document.createElement('canvas');
         canvas.width = 1; canvas.height = 1;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -174,10 +161,8 @@ export default function CVBuilder() {
             return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
         };
 
-        // Copiar estilos computados del original al clon
         const applyComputedStyles = (source: HTMLElement, target: HTMLElement) => {
             const computed = window.getComputedStyle(source);
-            // Propiedades críticas
             target.style.boxSizing = computed.boxSizing;
             target.style.backgroundColor = resolveColor(computed.backgroundColor);
             target.style.color = resolveColor(computed.color);
@@ -187,7 +172,6 @@ export default function CVBuilder() {
             target.style.lineHeight = computed.lineHeight;
             target.style.textAlign = computed.textAlign;
             
-            // Descomponer bordes para evitar problemas con colores modernos (oklch) en shorthands
             target.style.borderTopWidth = computed.borderTopWidth;
             target.style.borderTopStyle = computed.borderTopStyle;
             target.style.borderTopColor = resolveColor(computed.borderTopColor);
@@ -205,7 +189,6 @@ export default function CVBuilder() {
             target.style.margin = computed.margin;
             target.style.display = computed.display;
             
-            // Propiedades de Layout y Flexbox (Críticas para alineación)
             target.style.width = computed.width;
             target.style.minWidth = computed.minWidth;
             target.style.minHeight = computed.minHeight;
@@ -219,38 +202,34 @@ export default function CVBuilder() {
             target.style.flexGrow = computed.flexGrow;
             target.style.flexShrink = computed.flexShrink;
             
-            // Limpiar clases para evitar parsing de CSS externo
             target.removeAttribute('class');
         };
 
-        // Aplicar a la raíz
         applyComputedStyles(element, clone);
-        clone.style.transform = 'none'; // Resetear escala
+        clone.style.transform = 'none'; 
         clone.style.boxShadow = 'none';
-        clone.style.opacity = '1'; // Asegurar que sea visible
-        clone.style.position = 'static'; // Quitar absolute si lo tiene
-        clone.style.filter = 'none'; // Eliminar drop-shadow del PDF
+        clone.style.opacity = '1'; 
+        clone.style.position = 'static'; 
+        clone.style.filter = 'none'; 
         clone.style.margin = '0';
-        clone.style.backgroundImage = 'none'; // Eliminar guías de página del PDF
-        clone.style.backgroundColor = '#ffffff'; // Asegurar fondo blanco en el PDF
+        clone.style.backgroundImage = 'none'; 
+        clone.style.backgroundColor = '#ffffff'; 
         clone.style.width = '21cm';
 
-        // Aplicar a todos los descendientes
         const sourceElements = element.querySelectorAll('*');
         const targetElements = clone.querySelectorAll('*');
         sourceElements.forEach((el, i) => {
             if (targetElements[i]) applyComputedStyles(el as HTMLElement, targetElements[i] as HTMLElement);
         });
 
-        // Eliminar padding del contenedor clonado para que html2pdf use sus propios márgenes
         clone.style.padding = '0';
 
         const opt = {
-            margin: 10, // Margen de 1cm (10mm) para evitar que el texto toque el borde
+            margin: 10, 
             filename: `${cvData.personal.name.replace(/\s+/g, '_')}_CV.pdf`,
             image: { type: 'jpeg' as const, quality: 0.98 },
             html2canvas: { 
-                scale: mode === 'save' ? 2 : 1, // Optimización: Escala 1 para preview es más rápida
+                scale: mode === 'save' ? 2 : 1, 
                 useCORS: true, 
                 logging: false, 
                 windowWidth: 794 
@@ -260,7 +239,6 @@ export default function CVBuilder() {
 
         const worker = html2pdf().set(opt).from(clone).toPdf();
         
-        // Actualizar contador de páginas real
         worker.get('pdf').then((pdf: any) => {
             setPageCount(pdf.internal.getNumberOfPages());
         });
@@ -270,13 +248,12 @@ export default function CVBuilder() {
         } else {
             const url = await worker.output('bloburl');
             setPdfUrl((prev) => {
-                if (prev) URL.revokeObjectURL(prev); // Limpiar memoria
+                if (prev) URL.revokeObjectURL(prev); 
                 return url;
             });
         }
-        setIsStale(false); // Marcar como actualizado para evitar regeneraciones innecesarias
+        setIsStale(false); 
         
-        // Limpieza
         document.body.removeChild(container);
 
     } catch (error: any) {
@@ -289,48 +266,41 @@ export default function CVBuilder() {
   const handleReset = () => {
     if(confirm(t.actions.confirmReset)){
         setRawData(initialCVData);
-        // Resetear al tema por defecto
         handleThemeChange(themes[0]);
         setEditMode('form');
     }
   }
 
-  // --- LOGICA DE INTELIGENCIA ARTIFICIAL (REAL) ---
+  // --- LOGICA DE INTELIGENCIA ARTIFICIAL ---
   const handleAiAction = async (action: 'enhance' | 'optimize' | 'translate') => {
     setIsAiProcessing(true);
     
     try {
         let jobDescription = "";
         
-        // Si la acción es optimizar, necesitamos pedir la descripción del puesto
         if (action === 'optimize') {
-            // Nota: Usamos 'as any' por si no has actualizado locales.ts aún, para que no rompa
             const promptText = (t.ai as any).jobDescriptionPrompt || "Pega aquí la descripción del trabajo:";
             jobDescription = prompt(promptText) || "";
-            
-            // Si el usuario cancela, detenemos todo
             if (!jobDescription) {
                 setIsAiProcessing(false);
                 return;
             }
         }
 
-        // Llamada a nuestro Endpoint de Astro (que conecta con DeepSeek)
         const response = await fetch('/api/ai', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action,
-                cvData, // Enviamos el estado actual
-                lang,   // Enviamos el idioma actual ('es' o 'en')
+                cvData, 
+                lang,   
                 jobDescription
             })
         });
 
-        // Verificar si la respuesta es JSON antes de parsear
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-            throw new Error("La respuesta del servidor no es válida (posible error 500 o 404).");
+            throw new Error("La respuesta del servidor no es válida.");
         }
 
         if (!response.ok) {
@@ -339,15 +309,12 @@ export default function CVBuilder() {
 
         const newCvData = await response.json();
 
-        // Validamos que lo que nos devolvió la IA tenga sentido (mínimo que tenga la sección personal)
         if (!newCvData || !newCvData.personal) {
             throw new Error("La respuesta de la IA no tiene el formato esperado.");
         }
 
-        // Actualizamos el estado con los datos mejorados por IA
         setRawData(newCvData);
         
-        // Mensaje de éxito
         const successMsg = {
             enhance: t.ai.alerts.enhance,
             translate: t.ai.alerts.translate,
@@ -371,29 +338,36 @@ export default function CVBuilder() {
   if (!isMounted) return <div className="flex h-screen items-center justify-center bg-app-bg text-slate-400">Cargando...</div>;
 
   return (
-    <div className="flex flex-col h-dvh bg-app-bg font-sans text-text-main print:bg-white print:h-auto overflow-hidden relative">
+    // ESTRUCTURA PRINCIPAL: Flex Column que ocupa exactamente el 100% del viewport
+    // 'h-[100dvh]' es crucial para móviles. 'overflow-hidden' evita scroll global.
+    <div className="flex flex-col h-[100dvh] bg-app-bg font-sans text-text-main print:bg-white print:h-auto overflow-hidden">
       
-      <Navbar 
-        t={t}
-        lang={lang}
-        toggleLang={toggleLang}
-        editMode={editMode}
-        setEditMode={setEditMode}
-        onReset={handleReset}
-        onPrint={() => generatePDF('save')}
-        isAiProcessing={isAiProcessing}
-        onAiAction={handleAiAction}
-        currentTheme={activeThemeId}
-        onThemeChange={handleThemeChange}
-      />
+      {/* 1. HEADER: Fijo arriba (no position:fixed, sino flex item) */}
+      <div className="shrink-0 z-50 bg-panel-bg border-b border-panel-border">
+          <Navbar 
+            t={t}
+            lang={lang}
+            toggleLang={toggleLang}
+            editMode={editMode}
+            setEditMode={setEditMode}
+            onReset={handleReset}
+            onPrint={() => generatePDF('save')}
+            isAiProcessing={isAiProcessing}
+            onAiAction={handleAiAction}
+            currentTheme={activeThemeId}
+            onThemeChange={handleThemeChange}
+          />
+      </div>
 
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden print:overflow-visible print:h-auto print:block">
+      {/* 2. ÁREA DE CONTENIDO: Ocupa todo el espacio restante (flex-1) */}
+      {/* 'min-h-0' es OBLIGATORIO para que el scroll interno funcione en flexbox anidados */}
+      <main className="flex-1 min-h-0 flex flex-col lg:flex-row relative z-0">
         
         {/* PANEL IZQUIERDO: EDITOR */}
         <section className={`
             w-full lg:w-5/12 xl:w-4/12 
-            flex flex-col border-r border-panel-border bg-panel-bg print:hidden overflow-hidden transition-all relative min-w-0
-            ${mobileTab === 'editor' ? 'flex-1' : 'hidden lg:flex'} lg:h-auto
+            flex flex-col border-r border-panel-border bg-panel-bg print:hidden min-w-0
+            ${mobileTab === 'editor' ? 'flex-1 h-full overflow-hidden' : 'hidden lg:flex'}
         `}>
           
           {/* Overlay de Carga (IA) */}
@@ -409,7 +383,7 @@ export default function CVBuilder() {
 
           {editMode === 'form' ? (
               // MODO VISUAL
-              <div className="overflow-y-auto custom-scrollbar h-full pb-28 lg:pb-0">
+              <div className="overflow-y-auto custom-scrollbar h-full">
                   <CVForm data={cvData} onChange={handleDataChange} t={t} />
               </div>
           ) : (
@@ -419,7 +393,7 @@ export default function CVBuilder() {
                       {t.header.editorWarning}
                   </div>
                   
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-28 lg:pb-4">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
                     <Editor
                       value={markdown}
                       onValueChange={(code) => setMarkdown(code)}
@@ -441,25 +415,24 @@ export default function CVBuilder() {
         {/* PANEL DERECHO: PREVIEW */}
         <section className={`
             w-full lg:w-7/12 xl:w-8/12 
-            bg-app-bg overflow-hidden print:w-full print:bg-white print:overflow-visible custom-scrollbar relative flex items-center justify-center min-w-0
-            ${mobileTab === 'preview' ? 'flex-1' : 'hidden lg:flex'} lg:h-full print:flex!
+            bg-app-bg print:w-full print:bg-white print:overflow-visible relative
+            ${mobileTab === 'preview' ? 'flex-1 h-full block' : 'hidden lg:block'} 
         `}>
            
            {/* Inyección de CSS dinámico */}
            <style>{customCSS}</style>
 
            {/* Indicador de Páginas */}
-           <div className="absolute top-4 right-6 z-10 print:hidden pointer-events-none">
+           <div className="absolute top-4 right-6 z-20 print:hidden pointer-events-none">
                <div className="bg-slate-800/90 backdrop-blur text-slate-300 text-xs font-bold px-3 py-1.5 rounded-full border border-slate-600 shadow-lg flex items-center gap-2">
                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-blue-400">
                        <path fillRule="evenodd" d="M4.5 2A1.5 1.5 0 003 3.5v13A1.5 1.5 0 004.5 18h11a1.5 1.5 0 001.5-1.5V7.621a1.5 1.5 0 00-.44-1.06l-4.12-4.122A1.5 1.5 0 0011.378 2H4.5zm2.25 8.5a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5zm0 3a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5z" clipRule="evenodd" />
                    </svg>
-                   {/* @ts-ignore: Las claves page/pages acaban de ser añadidas */}
                    <span>{pageCount} {pageCount === 1 ? t.labels.page : t.labels.pages}</span>
                </div>
            </div>
 
-           {/* CONTENEDOR OCULTO: Fuente de verdad para cálculos y generación de PDF */}
+           {/* CONTENEDOR OCULTO (Fuente de verdad) */}
            <div 
                 ref={sourceRef}
                 className="cv-preview-content absolute top-0 left-0 -z-50 opacity-0 pointer-events-none"
@@ -471,7 +444,8 @@ export default function CVBuilder() {
            </div>
 
            {/* VISTA PREVIA PDF REAL */}
-           <div className="absolute top-0 left-0 right-0 bottom-28 lg:inset-0 flex flex-col items-center justify-center bg-slate-900/50 z-0 overflow-hidden">
+           {/* IMPORTANTE: Usamos 'h-full' relativo al padre Flex, NO 'absolute inset-0' global */}
+           <div className="relative w-full h-full flex flex-col items-center justify-center bg-slate-900/50 z-0 overflow-hidden">
                
                {/* Loading Overlay */}
                {isPdfLoading && (
@@ -489,8 +463,10 @@ export default function CVBuilder() {
                {pdfUrl ? (
                    <iframe 
                         src={`${pdfUrl}#toolbar=0&view=${windowWidth < 1024 ? 'FitH' : 'FitV'}`} 
-                        className="w-full h-full border-none shadow-2xl relative z-0" 
+                        className="w-full h-full border-none shadow-2xl relative z-10" 
                         title="CV Preview"
+                        // Permitir interacción pero asegurar que no se salga del contenedor
+                        style={{ display: 'block' }}
                    />
                ) : (
                    <div className="text-slate-400 text-sm">Generando documento...</div>
@@ -500,11 +476,13 @@ export default function CVBuilder() {
 
       </main>
 
-      {/* BARRA DE NAVEGACIÓN MÓVIL (SOLO VISIBLE EN PANTALLAS PEQUEÑAS) */}
-      <div className="lg:hidden print:hidden bg-slate-800 border-t border-slate-700 flex text-xs font-bold shrink-0 safe-area-pb shadow-2xl fixed bottom-0 left-0 right-0 z-50">
+      {/* 3. BARRA DE NAVEGACIÓN MÓVIL */}
+      {/* SOLUCIÓN FINAL: Elemento de bloque sólido (shrink-0), NO fixed. 
+          Al estar al final del flex-col, empuja la pantalla. El iframe de arriba NO puede taparlo. */}
+      <div className="lg:hidden print:hidden bg-slate-800 border-t border-slate-700 flex shrink-0 z-50 relative shadow-2xl safe-area-pb">
           <button 
               onClick={() => setMobileTab('editor')}
-              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'editor' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
+              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors active:bg-slate-700 ${mobileTab === 'editor' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
           >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
               <span>{t.header.editor}</span>
@@ -512,7 +490,7 @@ export default function CVBuilder() {
           <div className="w-px bg-slate-700 my-2"></div>
           <button 
               onClick={() => setMobileTab('preview')}
-              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors ${mobileTab === 'preview' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
+              className={`flex-1 py-4 flex items-center justify-center gap-2 transition-colors active:bg-slate-700 ${mobileTab === 'preview' ? 'text-blue-400 bg-slate-700/50 border-t-2 border-blue-500' : 'text-slate-400 border-t-2 border-transparent'}`}
           >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
               <span>{t.header.preview}</span>
