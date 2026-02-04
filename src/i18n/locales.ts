@@ -15,6 +15,8 @@ export const locales = {
       experience: "Experiencia Laboral",
       edu: "Educación",
       skills: "Habilidades y Certificaciones",
+      projects: "Proyectos Destacados",
+      custom: "Secciones Personalizadas"
     },
     labels: {
       // Personal
@@ -51,6 +53,12 @@ export const locales = {
       interests: "Intereses",
       page: "Página",
       pages: "Páginas",
+
+      // Projects & Custom
+      project: "Nombre del Proyecto",
+      sectionTitle: "Título de la Sección",
+      itemTitle: "Título del Elemento",
+      itemSubtitle: "Subtítulo / Rol / Fecha"
     },
     actions: {
       add: "+ Agregar",
@@ -60,6 +68,7 @@ export const locales = {
       addItem: "+ Añadir Elemento",
       addBullet: "+ Añadir Punto",
       addLink: "+ Añadir Enlace",
+      addSection: "+ Nueva Sección",
       save: "Guardar",
       saving: "Guardando...",
       saved: "Guardado"
@@ -98,6 +107,8 @@ export const locales = {
       experience: "Work Experience",
       edu: "Education",
       skills: "Skills & Certifications",
+      projects: "Key Projects",
+      custom: "Custom Sections"
     },
     labels: {
       // Personal
@@ -134,6 +145,12 @@ export const locales = {
       interests: "Interests",
       page: "Page",
       pages: "Pages",
+
+      // Projects & Custom
+      project: "Project Name",
+      sectionTitle: "Section Title",
+      itemTitle: "Item Title",
+      itemSubtitle: "Subtitle / Role / Date"
     },
     actions: {
       add: "+ Add",
@@ -143,6 +160,7 @@ export const locales = {
       addItem: "+ Add Item",
       addBullet: "+ Add Bullet",
       addLink: "+ Add Link",
+      addSection: "+ New Section",
       save: "Save",
       saving: "Saving...",
       saved: "Saved"

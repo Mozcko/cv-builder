@@ -15,32 +15,33 @@ export interface CvTheme {
 
 export const themes: CvTheme[] = [
     {
-        id: 'basic',
-        name: 'Básico',
-        css: basicCss,
-        color: '#64748b' 
-    },
-    {
-        id: 'render-classic',
-        name: 'RenderCV (LaTeX)',
+        id: 'hardvard',
+        name: 'Harvard classic',
         css: renderClassicCss,
         color: '#000000'
     },
     {
+        id: 'basic',
+        name: 'Basic',
+        css: basicCss,
+        color: '#64748b' 
+    },
+    
+    {
         id: 'modern-split',
-        name: 'Moderno Dividido',
+        name: 'Modern Split',
         css: modernSplitCss,
         color: '#2563eb'
     },
     {
         id: 'modern',
-        name: 'Elegante',
+        name: 'Elegant',
         css: modernCss,
         color: '#0f172a'
     },
     {
         id: 'minimal',
-        name: 'Minimalista',
+        name: 'Minimal',
         css: minimalCss,
         color: '#525252' 
     }

@@ -1,43 +1,37 @@
 import React from 'react';
 import type { Translation } from '../../i18n/locales';
-import type { CvTheme } from '../../templates'; 
 import AITools from './AITools'; 
-import ThemeSelector from './ThemeSelector'; 
 import UserMenu from '../auth/UserMenu'; // Importamos el menú de usuario desde auth
 
 interface EditorToolbarProps {
   t: Translation;
   lang: 'es' | 'en';
   toggleLang: () => void;
-  editMode: 'form' | 'code';
-  setEditMode: (mode: 'form' | 'code') => void;
   onReset: () => void;
   onPrint: () => void;
   
   isAiProcessing: boolean;
   onAiAction: (action: 'enhance' | 'optimize' | 'translate') => void;
 
-  currentTheme: string;
-  onThemeChange: (theme: CvTheme) => void;
-
   onSave: () => void;
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
+
+  resumeTitle: string;
+  onTitleChange: (title: string) => void;
 }
 
 export default function EditorToolbar({ 
   t, 
   lang, 
   toggleLang, 
-  editMode, 
-  setEditMode, 
   onReset, 
   onPrint,
   isAiProcessing,
   onAiAction,
-  currentTheme,   
-  onThemeChange,
   onSave,
-  saveStatus
+  saveStatus,
+  resumeTitle,
+  onTitleChange
 }: EditorToolbarProps) {
   
   return (
@@ -45,17 +39,25 @@ export default function EditorToolbar({
         
         {/* IZQUIERDA: Título + Banderas */}
         <div className="flex items-center gap-2 md:gap-4 lg:gap-6">
-            <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <a href="/app/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity" title="Volver al Dashboard">
                  <div className="bg-blue-600 w-8 h-8 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-white">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                     </svg>
                  </div>
-                 {/* En pantallas muy chicas ocultamos el texto "CVStudio" para dar espacio a herramientas */}
-                 <h1 className="text-lg font-bold text-text-main tracking-tight hidden sm:block">
-                    CVStudio<span className="text-blue-500">.tools</span>
-                 </h1>
             </a>
+            
+            {/* Input para el título del CV */}
+            <div className="flex flex-col">
+                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-0.5 hidden sm:block">Nombre del Archivo</label>
+                <input 
+                    type="text" 
+                    value={resumeTitle} 
+                    onChange={(e) => onTitleChange(e.target.value)}
+                    placeholder="Nombre del CV (ej. Full Stack Google)"
+                    className="bg-transparent border-b border-slate-700 hover:border-blue-500 focus:border-blue-500 text-sm font-bold text-white placeholder-slate-600 outline-none transition-colors w-32 sm:w-48 lg:w-64 truncate focus:w-64"
+                />
+            </div>
             
             {/* Toggle de Banderas */}
             <button 
@@ -78,29 +80,6 @@ export default function EditorToolbar({
                 onEnhance={() => onAiAction('enhance')} onOptimize={() => onAiAction('optimize')} onTranslate={() => onAiAction('translate')}
             />
 
-            {/* 2. Selector de Temas */}
-            <div className="hidden md:block">
-                <ThemeSelector currentTheme={currentTheme} onSelect={onThemeChange} />
-            </div>
-
-            <div className="h-6 w-px bg-slate-700 mx-1 hidden lg:block"></div>
-
-            {/* 3. Switch Visual/Code */}
-            <div className="bg-slate-900/80 p-1 rounded-lg hidden md:flex text-xs font-medium border border-slate-700">
-                <button 
-                    onClick={() => setEditMode('form')}
-                    className={`px-3 py-1.5 rounded-md transition-all ${editMode === 'form' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                >
-                    {t.header.visualEditor}
-                </button>
-                <button 
-                    onClick={() => setEditMode('code')}
-                    className={`px-3 py-1.5 rounded-md transition-all ${editMode === 'code' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                >
-                    {t.header.codeEditor}
-                </button>
-            </div>
-            
             {/* 4. Acciones: Reset & Download */}
             <button 
                 onClick={onSave} 

@@ -29,12 +29,13 @@ const generateSocialLinks = (socials: SocialLink[]): string => {
 }
 
 export const generateMarkdown = (data: CVData, lang: 'es' | 'en' = 'en'): string => {
-  const { personal, experience, education, skills, certifications } = data;
+  // Cast a any para soportar campos nuevos (projects, customSections) si la interfaz CVData no está actualizada
+  const { personal, experience, education, skills, certifications, projects, customSections, sectionOrder } = data as any;
 
   // Generamos la línea de contactos usando la función dinámica
   const socialLinksLine = generateSocialLinks(personal.socials);
 
-  const experienceSection = experience.map(exp => {
+  const experienceSection = experience.map((exp: any) => {
     const start = formatDate(exp.startDate, false, lang);
     const end = formatDate(exp.endDate, exp.isCurrent, lang);
     
@@ -56,7 +57,26 @@ ${descriptionBullets}
 `;
   }).join('\n');
 
-  const educationSection = education.map(edu => {
+  // --- NUEVO: PROYECTOS ---
+  let projectsSection = "";
+  if (projects && projects.length > 0) {
+      projectsSection = projects.map((proj: any) => {
+          const start = formatDate(proj.startDate, false, lang);
+          const end = formatDate(proj.endDate, false, lang);
+          const dateRange = (start || end) ? `${start} - ${end || (lang === 'es' ? 'Presente' : 'Present')}` : '';
+          const link = proj.url ? ` | Link` : '';
+          const descriptionBullets = generateBulletList(proj.description);
+          
+          return `
+### ${proj.name}
+*${proj.role}* | ${dateRange}${link}
+
+${descriptionBullets}
+`;
+      }).join('\n');
+  }
+
+  const educationSection = education.map((edu: any) => {
     const start = formatDate(edu.startDate, false, lang);
     const end = formatDate(edu.endDate, edu.isCurrent, lang);
     return `
@@ -66,23 +86,59 @@ ${descriptionBullets}
 `;
   }).join('\n<br>\n');
 
+  // --- NUEVO: SECCIONES PERSONALIZADAS ---
+  let customSectionsContent = "";
+  if (customSections && customSections.length > 0) {
+      customSectionsContent = customSections.map((sec: any) => {
+          const items = sec.items.map((item: any) => {
+              return `
+### ${item.title}
+${item.subtitle ? `*${item.subtitle}*` : ''}
+
+${item.description}
+`;
+          }).join('\n');
+          return `## ${sec.title}\n\n${items}`;
+      }).join('\n\n');
+  }
+
   const titles = lang === 'es' ? {
     exp: "Experiencia Profesional",
     skills: "Habilidades Técnicas",
     edu: "Educación",
     certs: "Certificaciones",
     lang: "Idiomas",
-    int: "Intereses"
+    int: "Intereses",
+    projects: "Proyectos Destacados"
   } : {
     exp: "Professional Experience",
     skills: "Technical Skills",
     edu: "Education",
     certs: "Certifications",
     lang: "Languages",
-    int: "Interests"
+    int: "Interests",
+    projects: "Key Projects"
   };
 
-  return `
+  // --- CONSTRUCCIÓN DINÁMICA DE SECCIONES ---
+  const sectionsMap: Record<string, string> = {
+      experience: experienceSection ? `\n## ${titles.exp}\n\n${experienceSection}` : '',
+      projects: projectsSection ? `\n## ${titles.projects}\n\n${projectsSection}` : '',
+      education: educationSection ? `\n## ${titles.edu}\n\n${educationSection}` : '',
+      custom: customSectionsContent ? `\n\n${customSectionsContent}` : '',
+      skills: (() => {
+          let content = "";
+          if (skills && skills.length > 0) content += `\n## ${titles.skills}\n\n${generateCategoryList(skills)}`;
+          if (certifications && certifications.length > 0) content += `\n## ${titles.certs}\n\n${generateCategoryList(certifications)}`;
+          if (data.languages) content += `\n\n**${titles.lang}:** ${data.languages}`;
+          if (data.interests) content += `\n<br>\n**${titles.int}:** ${data.interests}`;
+          return content;
+      })()
+  };
+
+  const order = sectionOrder || ['experience', 'projects', 'education', 'skills', 'custom'];
+
+  let md = `
 # ${personal.name}
 
 **${personal.city}** | **${personal.email}** | **${personal.phone}**
@@ -90,25 +146,11 @@ ${descriptionBullets}
 ${socialLinksLine}
 
 ${personal.summary}
+`;
 
-## ${titles.exp}
+  order.forEach((sectionId: string) => {
+      if (sectionsMap[sectionId]) md += sectionsMap[sectionId];
+  });
 
-${experienceSection}
-
-## ${titles.skills}
-
-${generateCategoryList(skills)}
-
-## ${titles.edu}
-
-${educationSection}
-
-## ${titles.certs}
-
-${generateCategoryList(certifications)}
-
-**${titles.lang}:** ${data.languages}
-<br>
-**${titles.int}:** ${data.interests}
-`.trim();
+  return md.trim();
 };

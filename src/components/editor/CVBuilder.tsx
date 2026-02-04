@@ -7,6 +7,7 @@ import { initialCVData, type CVData } from '../../types/cv';
 import { generateMarkdown } from '../../utils/markdownGenerator';
 import CVForm from './CVForm';
 import Navbar from './EditorToolbar'; 
+import ThemeSelector from './ThemeSelector';
 import { themes, getThemeById } from '../../templates'; 
 import { supabase } from '../../lib/supabase';
 
@@ -23,6 +24,7 @@ export default function CVBuilder() {
   const [rawData, setRawData] = useLocalStorage<CVData>('cv-data', initialCVData);
   const [resumeId, setResumeId] = useLocalStorage<string | null>('cv-resume-id', null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [resumeTitle, setResumeTitle] = useState<string>('');
   
   // 2. VALIDAR SCHEMA (ANTI-CRASH)
   const cvData = useMemo(() => {
@@ -36,16 +38,13 @@ export default function CVBuilder() {
         console.warn("Schema antiguo detectado. Reiniciando datos para evitar errores.");
         return initialCVData;
     }
-    return rawData;
+    return {
+        projects: [],
+        customSections: [],
+        sectionOrder: ['experience', 'projects', 'education', 'skills', 'custom'],
+        ...rawData
+    };
   }, [rawData]);
-
-  // Si detectamos datos corruptos/viejos, actualizamos el storage
-  useEffect(() => {
-      if (cvData !== rawData) {
-          setRawData(initialCVData);
-      }
-  }, [cvData, rawData, setRawData]);
-
 
   // 3. GESTIÓN DE TEMAS
   const [activeThemeId, setActiveThemeId] = useLocalStorage<string>('cv-theme-id', 'basic');
@@ -101,17 +100,18 @@ export default function CVBuilder() {
 
         if (urlId) {
             setResumeId(urlId);
-            const { data } = await supabase.from('resumes').select('data, theme').eq('id', urlId).single();
-            if (data?.data) {
-                setRawData(data.data);
+            const { data } = await supabase.from('resumes').select('data, theme, title').eq('id', urlId).single();
+            if (data) {
+                if (data.data) setRawData(data.data);
                 if (data.theme) setActiveThemeId(data.theme);
+                if (data.title) setResumeTitle(data.title);
             }
         } else if (!resumeId) {
             // 2. Si no hay ID ni en URL ni local, buscamos el último editado
-            const { data } = await supabase.from('resumes').select('id, data').eq('user_id', session.user.id).order('updated_at', { ascending: false }).limit(1).single();
+            const { data } = await supabase.from('resumes').select('id, data, title').eq('user_id', session.user.id).order('updated_at', { ascending: false }).limit(1).single();
             if (data) {
                 setResumeId(data.id);
-                // Opcional: Podríamos cargar data aquí también si queremos forzar sync
+                if (data.title) setResumeTitle(data.title);
             }
         }
     };
@@ -330,7 +330,7 @@ export default function CVBuilder() {
 
     const payload = {
         user_id: user.id,
-        title: cvData.personal.role || 'Mi CV',
+        title: resumeTitle || cvData.personal.role || 'Mi CV',
         data: cvData,
         language: lang,
         theme: activeThemeId,
@@ -357,7 +357,7 @@ export default function CVBuilder() {
         setSaveStatus('error');
         alert("Error al guardar. Revisa tu conexión.");
     }
-  }, [cvData, lang, activeThemeId, resumeId, setResumeId]);
+  }, [cvData, lang, activeThemeId, resumeId, setResumeId, resumeTitle]);
 
   // Atajo de teclado: Ctrl + S
   useEffect(() => {
@@ -455,16 +455,14 @@ export default function CVBuilder() {
             t={t}
             lang={lang}
             toggleLang={toggleLang}
-            editMode={editMode}
-            setEditMode={setEditMode}
             onReset={handleReset}
             onPrint={() => generatePDF('save')}
             isAiProcessing={isAiProcessing}
             onAiAction={handleAiAction}
-            currentTheme={activeThemeId}
-            onThemeChange={handleThemeChange}
             onSave={handleSave}
             saveStatus={saveStatus}
+            resumeTitle={resumeTitle}
+            onTitleChange={setResumeTitle}
           />
       </div>
 
@@ -479,6 +477,25 @@ export default function CVBuilder() {
             ${mobileTab === 'editor' ? 'flex-1 h-full overflow-hidden' : 'hidden lg:flex'}
         `}>
           
+          {/* BARRA DE HERRAMIENTAS DEL EDITOR (Header del Panel) */}
+          <div className="shrink-0 p-3 border-b border-panel-border bg-slate-900/50 flex justify-between items-center z-10">
+             <div className="flex bg-slate-800/50 p-0.5 rounded-lg border border-slate-700/50">
+                <button 
+                    onClick={() => setEditMode('form')}
+                    className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${editMode === 'form' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                    {t.header.visualEditor}
+                </button>
+                <button 
+                    onClick={() => setEditMode('code')}
+                    className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${editMode === 'code' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                    {t.header.codeEditor}
+                </button>
+             </div>
+             <ThemeSelector currentTheme={activeThemeId} onSelect={handleThemeChange} />
+          </div>
+
           {/* Overlay de Carga (IA) */}
           {isAiProcessing && (
               <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center text-purple-300">
