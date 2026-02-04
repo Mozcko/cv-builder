@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -58,6 +58,7 @@ export default function CVBuilder() {
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [windowWidth, setWindowWidth] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  const [showCodeWarning, setShowCodeWarning] = useState(true);
   
   // ESTADO PARA PREVIEW PDF REAL
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -102,7 +103,16 @@ export default function CVBuilder() {
             setResumeId(urlId);
             const { data } = await supabase.from('resumes').select('data, theme, title').eq('id', urlId).single();
             if (data) {
-                if (data.data) setRawData(data.data);
+                if (data.data) {
+                    // Detección de modo Markdown
+                    if (data.data.mode === 'markdown' && typeof data.data.markdown === 'string') {
+                        setMarkdown(data.data.markdown);
+                        setEditMode('code');
+                    } else {
+                        setRawData(data.data);
+                        setEditMode('form');
+                    }
+                }
                 if (data.theme) setActiveThemeId(data.theme);
                 if (data.title) setResumeTitle(data.title);
             }
@@ -112,6 +122,17 @@ export default function CVBuilder() {
             if (data) {
                 setResumeId(data.id);
                 if (data.title) setResumeTitle(data.title);
+                
+                // Cargar data también aquí para restaurar sesión correctamente (especialmente si es markdown)
+                if (data.data) {
+                    if (data.data.mode === 'markdown' && typeof data.data.markdown === 'string') {
+                        setMarkdown(data.data.markdown);
+                        setEditMode('code');
+                    } else {
+                        setRawData(data.data);
+                        setEditMode('form');
+                    }
+                }
             }
         }
     };
@@ -328,10 +349,29 @@ export default function CVBuilder() {
         return;
     }
 
+    // Determinar título y data según el modo
+    let finalTitle = resumeTitle;
+    let dataPayload = cvData;
+
+    if (editMode === 'code') {
+        // Guardar como Markdown puro
+        dataPayload = { mode: 'markdown', markdown } as any;
+        
+        if (!finalTitle) {
+             const h1Match = markdown.match(/^#\s+(.*)/);
+             finalTitle = h1Match ? h1Match[1].trim() : 'Markdown CV';
+        }
+    } else {
+        // Guardar como JSON estructurado
+        if (!finalTitle) {
+            finalTitle = cvData.personal.role || 'Mi CV';
+        }
+    }
+
     const payload = {
         user_id: user.id,
-        title: resumeTitle || cvData.personal.role || 'Mi CV',
-        data: cvData,
+        title: finalTitle,
+        data: dataPayload,
         language: lang,
         theme: activeThemeId,
         updated_at: new Date().toISOString()
@@ -357,7 +397,7 @@ export default function CVBuilder() {
         setSaveStatus('error');
         alert("Error al guardar. Revisa tu conexión.");
     }
-  }, [cvData, lang, activeThemeId, resumeId, setResumeId, resumeTitle]);
+  }, [cvData, lang, activeThemeId, resumeId, setResumeId, resumeTitle, editMode, markdown]);
 
   // Atajo de teclado: Ctrl + S
   useEffect(() => {
@@ -515,11 +555,21 @@ export default function CVBuilder() {
           ) : (
               // MODO CÓDIGO
               <div className="relative h-full flex flex-col bg-[#1d1f21]">
-                  <div className="bg-yellow-500/10 text-yellow-500 text-xs py-2 px-4 text-center border-b border-yellow-500/20 shrink-0 font-medium">
-                      {t.header.editorWarning}
-                  </div>
+                  {showCodeWarning && (
+                    <div className="m-4 mb-0 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-xs text-yellow-500 flex items-start gap-2 relative animate-in fade-in slide-in-from-top-2 shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mt-0.5 shrink-0">
+                            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        <div className="flex-1 pr-2">
+                            <p>{t.header.editorWarning}</p>
+                        </div>
+                        <button onClick={() => setShowCodeWarning(false)} className="text-yellow-500/70 hover:text-yellow-400 transition-colors" title={t.actions.close}>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+                        </button>
+                    </div>
+                  )}
                   
-                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-24">
                     <Editor
                       value={markdown}
                       onValueChange={(code) => setMarkdown(code)}

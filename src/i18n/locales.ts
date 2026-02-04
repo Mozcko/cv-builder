@@ -8,7 +8,9 @@ export const locales = {
       codeEditor: "Código Markdown",
       editorWarning: "⚠️ Modo Avanzado: Los cambios directos al código no actualizan el editor visual.",
       preview: "Vista Previa",
-      editor: "Editor"
+      editor: "Editor",
+      emptyFieldsNotice: "Los campos vacíos se ocultarán automáticamente en el documento.",
+      showHelp: "Mostrar Ayuda"
     },
     sections: {
       personal: "Información Personal",
@@ -71,7 +73,8 @@ export const locales = {
       addSection: "+ Nueva Sección",
       save: "Guardar",
       saving: "Guardando...",
-      saved: "Guardado"
+      saved: "Guardado",
+      close: "Cerrar"
     },
     ai: {
       button: "Herramientas IA",
@@ -100,7 +103,9 @@ export const locales = {
       codeEditor: "Markdown Code",
       editorWarning: "⚠️ Advanced Mode: Direct code changes do not update the visual editor.",
       preview: "Preview",
-      editor: "Editor"
+      editor: "Editor",
+      emptyFieldsNotice: "Empty fields will be automatically hidden in the document.",
+      showHelp: "Show Help"
     },
     sections: {
       personal: "Personal Information",
@@ -163,7 +168,8 @@ export const locales = {
       addSection: "+ New Section",
       save: "Save",
       saving: "Saving...",
-      saved: "Saved"
+      saved: "Saved",
+      close: "Close"
     },
     ai: {
       button: "AI Tools",

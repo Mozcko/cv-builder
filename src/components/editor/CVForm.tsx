@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import type { CVData, Experience, Education, SkillItem, SocialLink } from '../../types/cv';
 import type { Translation } from '../../i18n/locales';
 
@@ -18,11 +18,16 @@ interface InputProps {
     type?: string;
     disabled?: boolean;
     className?: string;
+    required?: boolean;
 }
 
-const Input = ({ label, value, onChange, placeholder, type = "text", disabled = false, className = "" }: InputProps) => (
+const Input = ({ label, value, onChange, placeholder, type = "text", disabled = false, className = "", required = false }: InputProps) => (
     <div className={`w-full ${className}`}>
-      {label && <label className={`block text-xs font-bold mb-1 uppercase tracking-wider ${disabled ? 'text-slate-600' : 'text-gray-400'}`}>{label}</label>}
+      {label && (
+        <label className={`block text-xs font-bold mb-1 uppercase tracking-wider ${disabled ? 'text-slate-600' : 'text-gray-400'}`}>
+            {label} {required && <span className="text-red-400" title="Obligatorio">*</span>}
+        </label>
+      )}
       <input 
         type={type} 
         value={value || ''} 
@@ -30,7 +35,8 @@ const Input = ({ label, value, onChange, placeholder, type = "text", disabled = 
         placeholder={placeholder}
         disabled={disabled}
         className={`w-full bg-slate-700/50 border rounded px-3 py-2 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all
-            ${disabled ? 'border-slate-800 text-slate-500 cursor-not-allowed' : 'border-slate-600 focus:border-transparent'}`}
+            ${disabled ? 'border-slate-800 text-slate-500 cursor-not-allowed' : 'border-slate-600 focus:border-transparent'}
+            ${required && !value ? 'border-l-2 border-l-red-500' : ''}`}
       />
     </div>
 );
@@ -221,6 +227,7 @@ const CustomSectionsEditor = ({ sections, onUpdate, t }: CustomSectionsEditorPro
 // --- COMPONENTE PRINCIPAL ---
 
 export default function CVForm({ data, onChange, t }: Props) {
+  const [showInfoBanner, setShowInfoBanner] = useState(true);
   
   const updatePersonal = (field: keyof CVData['personal'], value: any) => {
     onChange({ ...data, personal: { ...data.personal, [field]: value } });
@@ -270,14 +277,29 @@ export default function CVForm({ data, onChange, t }: Props) {
   return (
     <div className="p-3 md:p-6 space-y-6 md:space-y-8 pb-4">
       
+      {/* Aviso de campos vacíos */}
+      {showInfoBanner && (
+      <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-3 text-xs text-blue-200 flex items-start gap-2 relative animate-in fade-in slide-in-from-top-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mt-0.5 shrink-0">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+          </svg>
+          <div className="flex-1 pr-2">
+            <p>{t.header.emptyFieldsNotice}</p>
+          </div>
+          <button onClick={() => setShowInfoBanner(false)} className="text-blue-400 hover:text-white transition-colors" title={t.actions.close}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+          </button>
+      </div>
+      )}
+
       {/* 1. SECCIÓN PERSONAL */}
       <section>
         <h3 className="text-lg font-bold text-blue-400 mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
             <span className="w-2 h-6 bg-blue-500 rounded-full"></span> {t.sections.personal}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label={t.labels.fullName} value={data.personal.name} onChange={(v) => updatePersonal('name', v)} />
-            <Input label={t.labels.role} value={data.personal.role} onChange={(v) => updatePersonal('role', v)} />
+            <Input label={t.labels.fullName} value={data.personal.name} onChange={(v) => updatePersonal('name', v)} required />
+            <Input label={t.labels.role} value={data.personal.role} onChange={(v) => updatePersonal('role', v)} required />
             <Input label={t.labels.email} value={data.personal.email} onChange={(v) => updatePersonal('email', v)} />
             <Input label={t.labels.phone} value={data.personal.phone} onChange={(v) => updatePersonal('phone', v)} />
             <Input label={t.labels.city} value={data.personal.city} onChange={(v) => updatePersonal('city', v)} />

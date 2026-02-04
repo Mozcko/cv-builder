@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { supabase } from '../../lib/supabase';
 
 interface Resume {
@@ -130,9 +131,19 @@ export default function Dashboard() {
                                 </div>
                             </div>
                             <h3 className="text-xl font-bold text-white mb-1 truncate">{cv.title || 'Mi CV Sin Título'}</h3>
-                            <p className="text-sm text-slate-400 mb-6 line-clamp-2 flex-grow">
-                                {cv.data?.personal?.summary || 'Sin resumen profesional...'}
-                            </p>
+                            
+                            <div className="text-sm text-slate-400 mb-6 h-[42px] overflow-hidden relative">
+                                {cv.data?.mode === 'markdown' ? (
+                                    <div className="[&>h1]:text-white [&>h1]:font-bold [&>h1]:text-sm [&>h2]:text-white [&>h2]:font-bold [&>h2]:text-xs [&>p]:mb-1 [&>ul]:list-disc [&>ul]:pl-4">
+                                        <ReactMarkdown allowedElements={['p', 'h1', 'h2', 'h3', 'strong', 'em', 'ul', 'li', 'br']}>
+                                            {cv.data.markdown || 'Markdown sin contenido'}
+                                        </ReactMarkdown>
+                                    </div>
+                                ) : (
+                                    <p className="line-clamp-2">{cv.data?.personal?.summary || 'Sin resumen profesional...'}</p>
+                                )}
+                                <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-slate-800 to-transparent pointer-events-none"></div>
+                            </div>
                             
                             <div className="flex gap-2 mt-auto">
                                 <a href={`/app/editor?id=${cv.id}`} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg text-sm font-medium text-center transition-colors flex items-center justify-center">
