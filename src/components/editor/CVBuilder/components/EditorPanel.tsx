@@ -44,7 +44,7 @@ export default function EditorPanel({
 
   return (
     <section
-      className={`border-panel-border bg-panel-bg flex w-full min-w-0 flex-col border-r lg:w-5/12 xl:w-4/12 print:hidden ${isVisible ? 'h-full flex-1 overflow-hidden' : 'hidden lg:flex'}`}
+      className={`border-panel-border bg-panel-bg flex h-full w-full min-w-0 flex-col overflow-hidden border-r lg:w-5/12 xl:w-4/12 print:hidden ${isVisible ? 'block h-full flex-1' : 'hidden lg:flex'}`}
     >
       {/* Toolbar */}
       <div className="border-panel-border z-10 flex shrink-0 items-center justify-between border-b bg-slate-900/50 p-3">
@@ -114,7 +114,7 @@ export default function EditorPanel({
       )}
 
       {editMode === 'form' ? (
-        <div className="custom-scrollbar h-full overflow-y-auto">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
           <CVForm
             data={cvData}
             onChange={handleDataChange}
@@ -124,7 +124,7 @@ export default function EditorPanel({
           />
         </div>
       ) : (
-        <div className="relative flex h-full flex-col bg-[#1d1f21]">
+        <div className="relative flex min-h-0 flex-1 flex-col bg-[#1d1f21]">
           {showCodeWarning && (
             <div className="animate-in fade-in slide-in-from-top-2 relative m-4 mb-0 flex shrink-0 items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-xs text-yellow-500">
               <svg

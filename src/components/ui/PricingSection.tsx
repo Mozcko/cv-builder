@@ -1,0 +1,231 @@
+import React, { useState } from 'react';
+import { useAuth } from '@clerk/astro/react';
+import { useUiTranslations } from '../../i18n/utils';
+import type { locales } from '../../i18n/locales';
+import useProStatus from '../../hooks/useProStatus';
+
+export default function PricingSection({ lang = 'es' }: { lang?: keyof typeof locales }) {
+  const { userId, getToken } = useAuth();
+  const { isPro } = useProStatus();
+  const [loadingPlan, setLoadingPlan] = useState<'7' | '30' | 'lifetime' | null>(null);
+  const t = useUiTranslations(lang);
+  const pricing = (t('pricing') || {}) as Record<string, any>;
+  const langPrefix = lang === 'es' ? '' : `/${lang}`;
+
+  const currentPlanLabel =
+    lang === 'es' ? 'Tu Plan Actual' : lang === 'pt' ? 'Seu Plano Atual' : 'Your Current Plan';
+
+  const handleAction = async (planType: '7' | '30' | 'lifetime') => {
+    if (!userId) {
+      window.location.href = lang === 'es' ? '/sign-in' : `/${lang}/sign-in`;
+      return;
+    }
+
+    if (isPro) return;
+
+    try {
+      setLoadingPlan(planType);
+      const token = await getToken();
+
+      const response = await fetch(
+        `${import.meta.env.PUBLIC_API_URL}/billing/create-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ plan_type: planType }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Network response was not ok');
+      const data = await response.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      console.error('Stripe Checkout Error:', error);
+      alert(
+        lang === 'es'
+          ? 'Hubo un error al procesar el pago. Por favor, intenta de nuevo.'
+          : lang === 'pt'
+            ? 'Houve um erro ao processar o pagamento. Por favor, tente novamente.'
+            : 'There was an error processing the payment. Please try again.'
+      );
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  return (
+    <section id="pricing" className="mt-32 w-full max-w-6xl border-t border-white/5 py-20">
+      <div className="mb-16 text-center">
+        <h2 className="mb-4 text-4xl font-bold tracking-tight text-white">{pricing.title}</h2>
+        <p className="text-slate-400">{pricing.description}</p>
+      </div>
+
+      <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-4">
+        {/* Free Tier */}
+        <div className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900/30 p-8 text-left">
+          <h3 className="mb-2 text-lg font-bold text-slate-300">{pricing.plans.free.name}</h3>
+          <div className="mb-6">
+            <span className="text-3xl font-bold text-white">{pricing.plans.free.price}</span>
+          </div>
+          <ul className="mb-8 flex-1 space-y-4 text-sm text-slate-400">
+            {pricing.plans.free.features.map((feature: string, i: number) => (
+              <li
+                key={i}
+                className={`flex items-center gap-2 ${feature.includes('❌') || feature.includes('(No') || feature.includes('(Não') ? 'text-slate-600' : ''}`}
+              >
+                {feature.includes('❌') || feature.includes('(No') || feature.includes('(Não')
+                  ? ''
+                  : '✅ '}{' '}
+                {feature}
+              </li>
+            ))}
+          </ul>
+          <a
+            href={`${langPrefix}/app/editor`}
+            className="w-full rounded-xl bg-slate-800 py-3 text-center font-bold text-white transition-colors hover:bg-slate-700"
+          >
+            {isPro ? currentPlanLabel : pricing.plans.free.action}
+          </a>
+        </div>
+
+        {/* 7 Day Tier */}
+        <div className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-left">
+          <h3 className="mb-2 text-lg font-bold text-white">{pricing.plans.sprint.name}</h3>
+          <div className="mb-6">
+            <span className="text-3xl font-bold text-white">{pricing.plans.sprint.price}</span>
+            <span className="text-xs text-slate-500">{pricing.plans.sprint.duration}</span>
+          </div>
+          <ul className="mb-8 flex-1 space-y-4 text-sm text-slate-300">
+            {pricing.plans.sprint.features.map((feature: string, i: number) => (
+              <li key={i} className="flex items-center gap-2">
+                ✅ {feature}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => handleAction('7')}
+            disabled={loadingPlan !== null || isPro}
+            className="w-full rounded-xl bg-slate-700 py-3 text-center font-bold text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+          >
+            {loadingPlan === '7'
+              ? pricing.loading
+              : isPro
+                ? currentPlanLabel
+                : pricing.plans.sprint.action}
+          </button>
+        </div>
+
+        {/* 30 Day Tier - Featured */}
+        <div className="relative flex flex-col rounded-2xl border-2 border-blue-500 bg-blue-500/5 p-8 text-left shadow-2xl shadow-blue-500/10">
+          <span className="absolute -top-3 left-6 rounded-full bg-blue-500 px-3 py-1 text-[10px] font-bold tracking-widest text-white uppercase">
+            {pricing.recommended}
+          </span>
+          <h3 className="mb-2 text-lg font-bold text-white">{pricing.plans.active.name}</h3>
+          <div className="mb-6">
+            <span className="text-3xl font-bold text-white">{pricing.plans.active.price}</span>
+            <span className="text-xs text-slate-500">{pricing.plans.active.duration}</span>
+          </div>
+          <ul className="mb-8 flex-1 space-y-4 text-sm text-slate-200">
+            {pricing.plans.active.features.map((feature: string, i: number) => (
+              <li
+                key={i}
+                className={`flex items-center gap-2 ${i < 2 ? 'font-bold text-blue-400' : ''}`}
+              >
+                {i === 0 ? '💎 ' : i === 1 ? '✨ ' : '✅ '} {feature}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => handleAction('30')}
+            disabled={loadingPlan !== null || isPro}
+            className="w-full rounded-xl bg-blue-600 py-3 text-center font-bold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-500 disabled:opacity-50"
+          >
+            {loadingPlan === '30'
+              ? pricing.loading
+              : isPro
+                ? currentPlanLabel
+                : pricing.plans.active.action}
+          </button>
+        </div>
+
+        {/* Lifetime Tier */}
+        <div className="flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 p-8 text-left">
+          <h3 className="mb-2 text-lg font-bold text-white">{pricing.plans.lifetime.name}</h3>
+          <div className="mb-6">
+            <span className="text-3xl font-bold text-white">{pricing.plans.lifetime.price}</span>
+            <span className="text-xs text-slate-500">{pricing.plans.lifetime.duration}</span>
+          </div>
+          <ul className="mb-8 flex-1 space-y-4 text-sm text-slate-300">
+            {pricing.plans.lifetime.features.map((feature: string, i: number) => (
+              <li
+                key={i}
+                className={`flex items-center gap-2 ${i < 2 ? 'font-bold text-blue-400' : ''}`}
+              >
+                {i === 0 ? '🔥 ' : i === 1 ? '🚀 ' : '✅ '} {feature}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => handleAction('lifetime')}
+            disabled={loadingPlan !== null || isPro}
+            className="w-full rounded-xl bg-slate-800 py-3 text-center font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+          >
+            {loadingPlan === 'lifetime'
+              ? pricing.loading
+              : isPro
+                ? currentPlanLabel
+                : pricing.plans.lifetime.action}
+          </button>
+        </div>
+      </div>
+
+      {/* Feature Comparison Table */}
+      <div className="mt-20 overflow-x-auto">
+        <table className="w-full text-left text-sm text-slate-400">
+          <thead className="border-b border-white/5 text-xs text-slate-500 uppercase">
+            <tr>
+              <th className="py-4 font-medium">{pricing.table.feature}</th>
+              <th className="py-4 text-center font-medium">{pricing.table.basic}</th>
+              <th className="py-4 text-center font-medium text-blue-400">{pricing.table.pro}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            <tr>
+              <td className="py-4">{pricing.table.rows.limit}</td>
+              <td className="py-4 text-center">
+                {lang === 'es' ? 'Hasta 3' : lang === 'pt' ? 'Até 3' : 'Up to 3'}
+              </td>
+              <td className="py-4 text-center text-white">{pricing.table.rows.limitValues}</td>
+            </tr>
+            <tr>
+              <td className="py-4">{pricing.table.rows.ai}</td>
+              <td className="py-4 text-center">❌</td>
+              <td className="py-4 text-center text-white">{pricing.table.rows.aiValue}</td>
+            </tr>
+            <tr>
+              <td className="py-4">{pricing.table.rows.cover}</td>
+              <td className="py-4 text-center">❌</td>
+              <td className="py-4 text-center text-emerald-400 text-white">✅</td>
+            </tr>
+            <tr>
+              <td className="py-4">{pricing.table.rows.ats}</td>
+              <td className="py-4 text-center">❌</td>
+              <td className="py-4 text-center text-emerald-400 text-white">✅</td>
+            </tr>
+            <tr>
+              <td className="py-4">{pricing.table.rows.pdf}</td>
+              <td className="py-4 text-center">✅</td>
+              <td className="py-4 text-center text-white">✅ {pricing.table.rows.watermark}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}

@@ -1,21 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '@clerk/astro/react';
+import { api } from '../../lib/api';
 import { generateMarkdown } from '../../utils/markdownGenerator';
 import { themes } from '../../templates';
 import type { CVData } from '../../types/cv';
+import { locales } from '../../i18n/locales';
+import useProStatus from '../../hooks/useProStatus';
 
 interface Resume {
   id: string;
   title: string;
   updated_at: string;
   language: string;
-  data: Record<string, unknown>;
+  content: Record<string, unknown>;
   theme: string;
 }
 
-const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => void }) => {
+const ResumeCard = ({
+  cv,
+  onDelete,
+  lang,
+}: {
+  cv: Resume;
+  onDelete: (id: string) => void;
+  lang: string;
+}) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [scale, setScale] = React.useState(0.22);
 
@@ -25,7 +36,6 @@ const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => vo
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const width = entry.contentRect.width;
-        // 210mm @ 96dpi ~= 793.7px
         const A4_WIDTH_PX = 794;
         setScale(width / A4_WIDTH_PX);
       }
@@ -41,32 +51,27 @@ const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => vo
     `#cv-preview-${cv.id} .cv-preview-content`
   );
 
-  const markdownContent = React.useMemo(() => {
+  const markdownContent = useMemo(() => {
     try {
-      if (cv.data?.mode === 'markdown') {
-        return (cv.data.markdown as string) || '';
+      const content = cv.content as Record<string, unknown>;
+      if (content?.mode === 'markdown') {
+        return (content.markdown as string) || '';
       }
-      // Ensure arrays exist to prevent "map of undefined" errors in generateMarkdown
-      const rawData = (cv.data || {}) as unknown as {
-        experience?: unknown[];
-        education?: unknown[];
-        skills?: unknown[];
-        projects?: unknown[];
-        languages?: unknown;
-        social?: unknown[];
-      };
+
+      const rawData = content || {};
 
       const safeData = {
-        ...(cv.data || {}),
-        experience: rawData.experience || [],
-        education: rawData.education || [],
-        skills: rawData.skills || [],
-        projects: rawData.projects || [],
-        languages: rawData.languages || [],
-        social: rawData.social || [],
+        ...rawData,
+        experience: (rawData.experience as unknown[]) || [],
+        education: (rawData.education as unknown[]) || [],
+        skills: (rawData.skills as unknown[]) || [],
+        projects: (rawData.projects as unknown[]) || [],
+        languages: (rawData.languages as string) || '',
+        social: (rawData.social as unknown[]) || [],
       } as unknown as CVData;
-      return generateMarkdown(safeData, (cv.language as 'es' | 'en') || 'es');
-    } catch {
+      return generateMarkdown(safeData, (cv.language.toLowerCase() as 'es' | 'en' | 'pt') || 'es');
+    } catch (err) {
+      console.error('Error generating markdown for card:', err);
       return '';
     }
   }, [cv]);
@@ -75,15 +80,19 @@ const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => vo
     <div className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-800 p-5 transition-all hover:border-slate-500">
       <div className="mb-4 flex items-start justify-between">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-400 uppercase">
-          {cv.language || 'ES'}
+          {cv.language || (cv.content as { language?: string })?.language || 'ES'}
         </div>
         <div className="text-xs text-slate-500">{new Date(cv.updated_at).toLocaleDateString()}</div>
       </div>
       <h3 className="mb-1 truncate text-xl font-bold text-white">
-        {cv.title || 'Mi CV Sin Título'}
+        {cv.title ||
+          (lang === 'es'
+            ? 'Mi CV Sin Título'
+            : lang === 'pt'
+              ? 'Meu CV Sem Título'
+              : 'Untitled Resume')}
       </h3>
 
-      {/* VISTA PREVIA TIPO DOCUMENTO (Miniatura) */}
       <div
         ref={containerRef}
         className="relative mb-6 h-40 overflow-hidden rounded-md border border-slate-700/50 bg-slate-900/50 shadow-sm transition-all group-hover:border-slate-500/50"
@@ -113,12 +122,12 @@ const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => vo
           href={`/app/editor?id=${cv.id}`}
           className="flex flex-1 items-center justify-center rounded-lg bg-slate-700 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-slate-600"
         >
-          Editar
+          {lang === 'es' ? 'Editar' : lang === 'pt' ? 'Editar' : 'Edit'}
         </a>
         <button
           onClick={() => onDelete(cv.id)}
           className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-700 hover:text-red-400"
-          title="Eliminar"
+          title={lang === 'es' ? 'Eliminar' : lang === 'pt' ? 'Excluir' : 'Delete'}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -140,137 +149,172 @@ const ResumeCard = ({ cv, onDelete }: { cv: Resume; onDelete: (id: string) => vo
   );
 };
 
-export default function Dashboard() {
+export default function Dashboard({ lang = 'es' }: { lang?: string }) {
   const [resumes, setResumes] = useState<Resume[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingResumes, setLoadingResumes] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { getToken, userId } = useAuth();
+  const { isPro, loading: loadingPro } = useProStatus();
+  const t = locales[lang as keyof typeof locales]?.ui.nav || locales.es.ui.nav;
 
-  useEffect(() => {
-    loadResumes();
-  }, []);
+  const [showProBanner, setShowProBanner] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hide-pro-banner') !== 'true';
+    }
+    return true;
+  });
 
-  const loadResumes = async () => {
+  const loading = loadingResumes || loadingPro;
+
+  const loadResumes = useCallback(async () => {
+    if (!userId) return;
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        // Si no hay usuario, redirigir o manejar el estado
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('resumes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
+      const token = await getToken();
+      const data = await api.getCVs(token);
       setResumes(data || []);
     } catch (err: unknown) {
       console.error(err);
       if (err instanceof Error) setError(err.message);
-      else setError('Error al cargar los CVs');
+      else
+        setError(
+          lang === 'es'
+            ? 'Error al cargar los CVs'
+            : lang === 'pt'
+              ? 'Erro ao carregar CVs'
+              : 'Error loading CVs'
+        );
     } finally {
-      setLoading(false);
+      setLoadingResumes(false);
     }
-  };
+  }, [getToken, userId, lang]);
+
+  useEffect(() => {
+    if (userId) {
+      const timer = setTimeout(() => {
+        loadResumes();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [userId, loadResumes]);
 
   const handleCreate = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
 
-    // Estructura mínima inicial
+    if (!isPro && resumes.length >= 3) {
+      alert(lang === 'es' ? 'Has alcanzado el límite de 3 CVs' : 'You have reached the limit');
+      window.location.href = lang === 'es' ? '/pricing' : `/${lang}/pricing`;
+      return;
+    }
+
+    const token = await getToken();
+
     const initialData = {
       personal: {
-        name: user.user_metadata?.full_name || 'Tu Nombre',
+        name: 'Tu Nombre',
         role: 'Tu Rol',
         summary: 'Resumen profesional...',
+        email: '',
+        phone: '',
+        city: '',
+        socials: [],
       },
+      experience: [],
+      education: [],
+      skills: [],
+      certifications: [],
+      languages: '',
+      interests: '',
     };
 
-    const { data, error } = await supabase
-      .from('resumes')
-      .insert([
+    try {
+      const newId = crypto.randomUUID();
+      const data = await api.createCV(
         {
-          user_id: user.id,
-          title: 'Nuevo Currículum',
-          data: initialData,
-          language: 'es',
-          theme: 'basic',
+          id: newId,
+          title:
+            lang === 'es' ? 'Nuevo Currículum' : lang === 'pt' ? 'Novo Currículo' : 'New Resume',
+          content: initialData as unknown as CVData,
+          language: lang.toUpperCase(),
         },
-      ])
-      .select()
-      .single();
+        token
+      );
 
-    if (error) {
-      alert('Error al crear: ' + error.message);
-    } else if (data) {
-      window.location.href = `/app/editor?id=${data.id}`;
+      if (data) {
+        window.location.href = `/app/editor?id=${data.id}`;
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert(errorMsg);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este CV?')) return;
+    if (!confirm(lang === 'es' ? '¿Eliminar?' : 'Delete?')) return;
 
-    const { error } = await supabase.from('resumes').delete().eq('id', id);
-    if (error) {
-      alert(error.message);
-    } else {
-      setResumes(resumes.filter((r) => r.id !== id));
+    try {
+      const token = await getToken();
+      await api.deleteCV(id, token);
+      setResumes((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: unknown) {
+      if (err instanceof Error) alert(err.message);
     }
   };
 
   return (
-    <div>
-      {/* Header Section */}
-      <div className="mb-8 flex items-end justify-between">
-        <div>
-          <h1 className="mb-2 text-3xl font-bold text-white">Mis Currículums</h1>
-          <p className="text-slate-400">Gestiona y edita tus documentos.</p>
-        </div>
+    <>
+      <div>
+        <div className="mb-8 flex items-end justify-between">
+          <div>
+            <h1 className="mb-2 text-3xl font-bold text-white">{t.dashboard}</h1>
+            <p className="text-slate-400">
+              {lang === 'es' ? 'Gestiona tus documentos.' : 'Manage documents.'}
+            </p>
+          </div>
 
-        <button
-          onClick={handleCreate}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-bold text-white transition-colors hover:bg-blue-500"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="h-5 w-5"
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-bold text-white transition-colors hover:bg-blue-500"
           >
-            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-          </svg>
-          Crear Nuevo
-        </button>
-      </div>
-
-      {/* Grid Section */}
-      {loading ? (
-        <div className="animate-pulse py-10 text-center text-slate-500">
-          Cargando tus documentos...
-        </div>
-      ) : error ? (
-        <div className="rounded-lg border border-red-900/50 bg-red-900/10 py-10 text-center text-red-400">
-          {error}
-        </div>
-      ) : resumes.length === 0 ? (
-        <div className="col-span-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-700 p-10 text-slate-500">
-          <p className="mb-4">No tienes currículums guardados aún.</p>
-          <button onClick={handleCreate} className="text-blue-400 underline hover:text-white">
-            Crear el primero
+            {lang === 'es' ? 'Crear Nuevo' : 'Create New'}
           </button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {resumes.map((cv) => (
-            <ResumeCard key={cv.id} cv={cv} onDelete={handleDelete} />
-          ))}
-        </div>
-      )}
-    </div>
+
+        {isPro && showProBanner && (
+          <div className="animate-in fade-in slide-in-from-top-2 relative mb-8 flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 duration-300">
+            <span className="text-xl">💎</span>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-amber-500">Pro Account</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowProBanner(false);
+                localStorage.setItem('hide-pro-banner', 'true');
+              }}
+              className="p-1 text-amber-500/50 transition-colors hover:text-amber-500"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="animate-pulse py-10 text-center text-slate-500">Cargando...</div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-900/50 bg-red-900/10 py-10 text-center text-red-400">
+            {error}
+          </div>
+        ) : resumes.length === 0 ? (
+          <div className="col-span-full flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-700 p-10 text-slate-500">
+            <p className="mb-4">{lang === 'es' ? 'No tienes currículums.' : 'No resumes.'}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {resumes.map((cv) => (
+              <ResumeCard key={cv.id} cv={cv} onDelete={handleDelete} lang={lang} />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }

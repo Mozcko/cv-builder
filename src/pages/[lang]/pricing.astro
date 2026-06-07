@@ -1,0 +1,24 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import SiteHeader from '../../components/ui/SiteHeader';
+import PricingSection from '../../components/ui/PricingSection';
+import { useUiTranslations } from '../../i18n/utils';
+import { locales } from '../../i18n/locales';
+
+const { lang } = Astro.params;
+
+if (!['en', 'pt'].includes(lang)) {
+  return Astro.redirect('/404');
+}
+
+const t = useUiTranslations(lang as keyof typeof locales);
+const pricingNav = t('nav.pricing');
+---
+
+<AppLayout title={`${pricingNav} | CV Studio`}>
+  <SiteHeader lang={lang} client:only="react" />
+
+  <div class="flex min-h-screen flex-col items-center justify-center pt-24 pb-16">
+    <PricingSection lang={lang} client:only="react" />
+  </div>
+</AppLayout>

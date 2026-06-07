@@ -8,16 +8,22 @@ import PreviewPanel from './components/PreviewPanel';
 import MobileNavigation from './components/MobileNavigation';
 import ATSModal from '../ATSModal';
 import CoverLetterModal from '../CoverLetterModal';
+import AuthRequiredModal from '../AuthRequiredModal';
+import GuestBanner from '../GuestBanner';
+import OptimizeModal from '../OptimizeModal';
+import AIChoiceModal from '../AIChoiceModal';
+import Toast from '../../ui/Toast';
 
 export default function CVBuilder() {
   const { t, lang, toggleLang } = useTranslation();
+  const safeLang = lang as 'es' | 'en' | 'pt';
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const [windowWidth, setWindowWidth] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth : 0
   );
   const [isMounted, setIsMounted] = useState(false);
 
-  const cvLogic = useCVLogic(t, lang);
+  const cvLogic = useCVLogic(t, safeLang);
   const {
     resumeId,
     saveStatus,
@@ -42,11 +48,23 @@ export default function CVBuilder() {
     handleAtsAnalysis,
     isCoverLetterOpen,
     setIsCoverLetterOpen,
+    isOptimizeModalOpen,
+    setIsOptimizeModalOpen,
+    isChoiceModalOpen,
+    setIsChoiceModalOpen,
+    handleChoiceApplied,
     handleGenerateCoverLetter,
     handleUndo,
     handleRedo,
     canUndo,
     canRedo,
+    isGuest,
+    isPro,
+    isAuthModalOpen,
+    setIsAuthModalOpen,
+    authModalConfig,
+    toasts,
+    removeToast,
   } = cvLogic;
 
   const pdfPreview = usePDFPreview(markdown, customCSS, mobileTab, windowWidth, cvData);
@@ -95,12 +113,7 @@ export default function CVBuilder() {
 
   // LÓGICA DE AUTO-GUARDADO (Refinada)
   useEffect(() => {
-    // 1. Debe haber un ID para guardar.
-    // 2. No debe estar guardando ya.
-    // 3. IMPORTANTISIMO: Solo guardar si isDirty es true.
     if (!resumeId || saveStatus === 'saving' || !isDirty) return;
-
-    // Si cumple, esperamos 3 segundos de inactividad
     const timer = setTimeout(() => handleSave(), 3000);
     return () => clearTimeout(timer);
   }, [resumeId, saveStatus, handleSave, isDirty]);
@@ -114,15 +127,19 @@ export default function CVBuilder() {
 
   return (
     <div className="bg-app-bg text-text-main flex h-dvh flex-col overflow-hidden font-sans print:h-auto print:bg-white">
+      {isGuest && <GuestBanner lang={safeLang} onSignUp={() => setIsAuthModalOpen(true)} />}
       <div className="bg-panel-bg border-panel-border z-50 shrink-0 border-b">
         <Navbar
           t={t}
-          lang={lang}
+          lang={safeLang}
           toggleLang={toggleLang}
           onReset={handleReset}
           onPrint={handlePrint}
           isAiProcessing={isAiProcessing}
-          onAiAction={handleAiAction}
+          onAiAction={(action) => {
+            if (action === 'optimize') setIsOptimizeModalOpen(true);
+            else handleAiAction(action);
+          }}
           onSave={handleSave}
           saveStatus={saveStatus}
           resumeTitle={resumeTitle}
@@ -133,6 +150,7 @@ export default function CVBuilder() {
           onRedo={handleRedo}
           canUndo={canUndo}
           canRedo={canRedo}
+          isPro={isPro}
         />
       </div>
 
@@ -162,6 +180,7 @@ export default function CVBuilder() {
           isVisible={mobileTab === 'preview'}
         />
       </main>
+
       <ATSModal
         isOpen={isAtsModalOpen}
         onClose={() => setIsAtsModalOpen(false)}
@@ -174,7 +193,42 @@ export default function CVBuilder() {
         t={t}
         onGenerate={handleGenerateCoverLetter}
       />
+      <OptimizeModal
+        isOpen={isOptimizeModalOpen}
+        onClose={() => setIsOptimizeModalOpen(false)}
+        t={t}
+        onOptimize={(jd) => handleAiAction('optimize', jd)}
+        isProcessing={isAiProcessing}
+      />
+
+      <AIChoiceModal
+        isOpen={isChoiceModalOpen}
+        onClose={() => setIsChoiceModalOpen(false)}
+        onChoice={handleChoiceApplied}
+        t={t}
+        lang={safeLang}
+      />
+
+      <AuthRequiredModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        lang={safeLang}
+        {...authModalConfig}
+      />
+
       <MobileNavigation mobileTab={mobileTab} setMobileTab={setMobileTab} t={t} />
+
+      {/* Toast Notifications container */}
+      <div className="pointer-events-none fixed inset-0 z-[200] flex flex-col items-center justify-end gap-2 p-8">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

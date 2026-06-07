@@ -1,15 +1,17 @@
 ---
 import Layout from './Layout.astro';
+import GuestSync from '../components/auth/GuestSync';
 
 interface Props {
-	title: string;
+  title: string;
 }
 
 const { title } = Astro.props;
 ---
 
 <Layout title={title}>
-    <div class="h-screen flex flex-col overflow-hidden bg-app-bg">
-        <slot />
-    </div>
+  <GuestSync client:only="react" />
+  <div class="bg-app-bg flex h-screen flex-col overflow-y-auto">
+    <slot />
+  </div>
 </Layout>

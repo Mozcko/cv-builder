@@ -28,3 +28,6 @@ pnpm-debug.log*
 # editors and folders
 .idea/
 .vscode/
+
+# clerk configuration (can include secrets)
+/.clerk/

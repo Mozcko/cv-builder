@@ -9,6 +9,7 @@ interface AIToolsProps {
   onAtsSimulator: () => void;
   onCoverLetter: () => void;
   isProcessing: boolean;
+  isPro: boolean;
 }
 
 export default function AITools({
@@ -19,6 +20,7 @@ export default function AITools({
   onAtsSimulator,
   onCoverLetter,
   isProcessing,
+  isPro,
 }: AIToolsProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -89,41 +91,76 @@ export default function AITools({
           <div className="space-y-1 p-2">
             <button
               onClick={() => handleAction(onEnhance)}
-              className="group flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
+              className="group flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
             >
-              <span className="text-purple-400 group-hover:text-purple-300">✨</span>{' '}
-              {t.ai.dropdown.enhance}
+              <div className="flex items-center gap-2">
+                <span className="text-purple-400 group-hover:text-purple-300">✨</span>{' '}
+                {t.ai.dropdown.enhance}
+              </div>
+              {!isPro && (
+                <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[8px] font-bold text-amber-500">
+                  PRO
+                </span>
+              )}
             </button>
             <button
               onClick={() => handleAction(onOptimize)}
-              className="group flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
+              className="group flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
             >
-              <span className="text-blue-400 group-hover:text-blue-300">🎯</span>{' '}
-              {t.ai.dropdown.optimize}
+              <div className="flex items-center gap-2">
+                <span className="text-blue-400 group-hover:text-blue-300">🎯</span>{' '}
+                {t.ai.dropdown.optimize}
+              </div>
+              {!isPro && (
+                <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[8px] font-bold text-amber-500">
+                  PRO
+                </span>
+              )}
             </button>
             <button
               onClick={() => handleAction(onTranslate)}
-              className="group flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
+              className="group flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
             >
-              <span className="text-green-400 group-hover:text-green-300">🌐</span>{' '}
-              {t.ai.dropdown.translate}
+              <div className="flex items-center gap-2">
+                <span className="text-green-400 group-hover:text-green-300">🌐</span>{' '}
+                {t.ai.dropdown.translate}
+              </div>
+              {!isPro && (
+                <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[8px] font-bold text-amber-500">
+                  PRO
+                </span>
+              )}
             </button>
             <button
               onClick={() => handleAction(onCoverLetter)}
-              className="group flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
+              className="group flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
             >
-              <span className="text-pink-400 group-hover:text-pink-300">📝</span>{' '}
-              {t.ai.coverLetter.button}
+              <div className="flex items-center gap-2">
+                <span className="text-pink-400 group-hover:text-pink-300">📝</span>{' '}
+                {t.ai.coverLetter.button}
+              </div>
+              {!isPro && (
+                <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[8px] font-bold text-amber-500">
+                  PRO
+                </span>
+              )}
             </button>
 
             <div className="my-1 border-t border-slate-700/50"></div>
 
             <button
               onClick={() => handleAction(onAtsSimulator)}
-              className="group flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
+              className="group flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-700"
             >
-              <span className="text-orange-400 group-hover:text-orange-300">📊</span>{' '}
-              {t.ai.ats.button}
+              <div className="flex items-center gap-2">
+                <span className="text-orange-400 group-hover:text-orange-300">📊</span>{' '}
+                {t.ai.ats.button}
+              </div>
+              {!isPro && (
+                <span className="rounded bg-amber-500/10 px-1 py-0.5 text-[8px] font-bold text-amber-500">
+                  PRO
+                </span>
+              )}
             </button>
           </div>
           <div className="border-t border-slate-700/50 bg-slate-900/50 p-2 text-center text-[10px] text-slate-500">

@@ -1,0 +1,20 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import SiteHeader from '../../../components/ui/SiteHeader';
+import UserDashboard from '../../../components/dashboard/Dashboard';
+
+const { lang } = Astro.params;
+const { userId } = Astro.locals.auth();
+
+if (!userId) {
+  return Astro.redirect(lang === 'es' ? '/sign-in' : `/${lang}/sign-in`);
+}
+---
+
+<AppLayout title={lang === 'en' ? 'My Resumes - CVStudio' : 'Meus Currículos - CVStudio'}>
+  <SiteHeader lang={lang} client:only="react" />
+
+  <main class="container mx-auto px-4 pt-24 pb-12">
+    <UserDashboard lang={lang} client:only="react" />
+  </main>
+</AppLayout>

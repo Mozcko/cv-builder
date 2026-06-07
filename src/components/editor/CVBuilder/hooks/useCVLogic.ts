@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { supabase } from '../../../../lib/supabase';
+import { useAuth } from '@clerk/astro/react';
+import { api } from '../../../../lib/api';
 import useLocalStorage from '../../../../hooks/useLocalStorage';
 import { initialCVData, type CVData } from '../../../../types/cv';
 import { generateMarkdown } from '../../../../utils/markdownGenerator';
@@ -7,162 +8,186 @@ import type { CvTheme } from '../../../../templates';
 import { themes } from '../../../../templates';
 import type { Translation } from '../../../../i18n/locales';
 
-export function useCVLogic(t: Translation, lang: 'es' | 'en') {
-  // 1. DATA STATE
+export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
+  const { getToken, userId, isLoaded } = useAuth();
+  const isGuest = !userId;
+
   const [rawData, setRawData] = useLocalStorage<CVData>('cv-data', initialCVData);
   const [resumeId, setResumeId] = useLocalStorage<string | null>('cv-resume-id', null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [resumeTitle, setResumeTitle] = useState<string>('');
+  const [isPro, setIsPro] = useState(false);
 
-  // Bandera para saber si hay cambios sin guardar
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalConfig, setAuthModalConfig] = useState<{
+    title?: string;
+    description?: string;
+    mode?: 'auth' | 'upgrade';
+  }>({});
+  const [isAtsModalOpen, setIsAtsModalOpen] = useState(false);
+  const [isCoverLetterOpen, setIsCoverLetterOpen] = useState(false);
+  const [isOptimizeModalOpen, setIsOptimizeModalOpen] = useState(false);
+  const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
+  const [pendingAiData, setPendingAiData] = useState<{
+    data: CVData;
+    action: string;
+    lang: string;
+  } | null>(null);
+  const [toasts, setToasts] = useState<
+    { id: string; message: string; type: 'success' | 'error' | 'info' }[]
+  >([]);
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+      const id = crypto.randomUUID();
+      setToasts((prev) => [...prev, { id, message, type }]);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const triggerAuthModal = useCallback(
+    (title?: string, description?: string, mode: 'auth' | 'upgrade' = 'auth') => {
+      setAuthModalConfig({ title, description, mode });
+      setIsAuthModalOpen(true);
+    },
+    []
+  );
+
+  useEffect(() => {
+    const fetchProStatus = async () => {
+      if (!isLoaded || !userId) return;
+      try {
+        const token = await getToken();
+        const profile = await api.getUserProfile(token);
+        setIsPro(profile.is_pro);
+      } catch (err: unknown) {
+        console.error(err);
+      }
+    };
+    fetchProStatus();
+  }, [isLoaded, userId, getToken]);
+
   const [isDirty, setIsDirty] = useState(false);
-
-  // --- NUEVO: HISTORY STATE (Undo/Redo) ---
   const [past, setPast] = useState<CVData[]>([]);
   const [future, setFuture] = useState<CVData[]>([]);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Guardamos una referencia al estado actual para el debounce
   const currentDataRef = useRef<CVData>(rawData);
+
   useEffect(() => {
     currentDataRef.current = rawData;
   }, [rawData]);
 
-  // 2. THEME STATE
   const [activeThemeId, setActiveThemeId] = useLocalStorage<string>('cv-theme-id', 'basic');
   const [customCSS, setCustomCSS] = useLocalStorage<string>('cv-custom-css', themes[0].css);
-
-  // 3. EDITOR STATE
   const [markdown, setMarkdownState] = useState<string>('');
   const [editMode, setEditMode] = useState<'form' | 'code'>('form');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
-  const [isAtsModalOpen, setIsAtsModalOpen] = useState(false);
-  const [isCoverLetterOpen, setIsCoverLetterOpen] = useState(false);
-
-  // 4. SCHEMA VALIDATION
   const cvData = useMemo(() => {
-    const isOldSchema =
-      !Array.isArray(rawData.skills) ||
-      !Array.isArray(rawData.certifications) ||
-      !Array.isArray(rawData.personal?.socials) ||
-      (rawData.experience.length > 0 && typeof rawData.experience[0].description === 'string');
+    const personal = {
+      name: '',
+      role: '',
+      summary: '',
+      email: '',
+      phone: '',
+      city: '',
+      socials: [],
+      ...rawData?.personal,
+    };
 
-    if (isOldSchema) {
-      console.warn('Schema antiguo detectado. Reiniciando datos para evitar errores.');
-      return initialCVData;
+    const experience = Array.isArray(rawData?.experience) ? rawData.experience : [];
+    const education = Array.isArray(rawData?.education) ? rawData.education : [];
+    const skills = Array.isArray(rawData?.skills) ? rawData.skills : [];
+    const certifications = Array.isArray(rawData?.certifications) ? rawData.certifications : [];
+    const projects = Array.isArray((rawData as unknown as { projects?: unknown[] })?.projects)
+      ? (rawData as unknown as { projects: unknown[] }).projects
+      : [];
+    const customSections = Array.isArray(
+      (rawData as unknown as { customSections?: unknown[] })?.customSections
+    )
+      ? (rawData as unknown as { customSections: unknown[] }).customSections
+      : [];
+
+    const defaultOrder = ['experience', 'projects', 'education', 'skills', 'custom'];
+    const sectionOrder = (rawData as unknown as { sectionOrder?: string[] })?.sectionOrder as
+      | string[]
+      | undefined;
+
+    let finalOrder: string[];
+    if (!Array.isArray(sectionOrder) || sectionOrder.length === 0) {
+      finalOrder = defaultOrder;
+    } else {
+      const currentOrder = sectionOrder.map((s: string) => String(s).toLowerCase());
+      const missingDefaults = defaultOrder.filter((s) => !currentOrder.includes(s));
+      finalOrder = [...currentOrder, ...missingDefaults];
     }
+
     return {
-      projects: [],
-      customSections: [],
-      sectionOrder: ['experience', 'projects', 'education', 'skills', 'custom'],
       ...rawData,
+      personal,
+      experience,
+      education,
+      skills,
+      certifications,
+      projects,
+      customSections,
+      sectionOrder: finalOrder,
     };
   }, [rawData]);
 
-  // 5. SYNC MARKDOWN
   useEffect(() => {
     if (editMode === 'form') {
       setMarkdownState(generateMarkdown(cvData, lang));
     }
   }, [cvData, editMode, lang]);
 
-  // 6. LOAD FROM DB
   useEffect(() => {
-    const initSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
+    const initData = async () => {
+      if (!isLoaded || !userId) return;
+      const token = await getToken();
       const params = new URLSearchParams(window.location.search);
       const urlId = params.get('id');
 
-      if (urlId) {
-        setResumeId(urlId);
-        const { data } = await supabase
-          .from('resumes')
-          .select('data, theme, title')
-          .eq('id', urlId)
-          .single();
-        if (data) {
-          if (data.data) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const userCvData = data.data as any;
-            if (userCvData.mode === 'markdown' && typeof userCvData.markdown === 'string') {
-              setMarkdownState(userCvData.markdown);
+      try {
+        if (urlId) {
+          setResumeId(urlId);
+          const data = await api.getCV(urlId, token);
+          if (data && data.content) {
+            const userCvData = data.content as Record<string, unknown>;
+            if (userCvData.mode === 'markdown') {
+              setMarkdownState(userCvData.markdown as string);
               setEditMode('code');
             } else {
-              setRawData(userCvData);
+              setRawData({ ...(userCvData as unknown as CVData), language: data.language || 'ES' });
               setEditMode('form');
-              setPast([]);
-              setFuture([]);
             }
+            if (data.title) setResumeTitle(data.title);
+            setIsDirty(false);
+            setSaveStatus('saved');
           }
-          if (data.theme) setActiveThemeId(data.theme);
-          if (data.title) setResumeTitle(data.title);
-          setIsDirty(false);
-          setSaveStatus('saved'); // Cargado exitosamente
         }
-      } else if (!resumeId) {
-        const { data } = await supabase
-          .from('resumes')
-          .select('id, data, title')
-          .eq('user_id', session.user.id)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .single();
-        if (data) {
-          setResumeId(data.id);
-          if (data.title) setResumeTitle(data.title);
-          if (data.data) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const userCvData = data.data as any;
-            if (userCvData.mode === 'markdown' && typeof userCvData.markdown === 'string') {
-              setMarkdownState(userCvData.markdown);
-              setEditMode('code');
-            } else {
-              setRawData(userCvData);
-              setEditMode('form');
-              setPast([]);
-              setFuture([]);
-            }
-          }
-          setIsDirty(false);
-          setSaveStatus('saved');
-        }
+      } catch (err: unknown) {
+        console.error(err);
       }
     };
-    initSession();
-  }, []);
-
-  // 7. ACTIONS (Ahora resetean saveStatus a 'idle')
+    initData();
+  }, [isLoaded, userId, getToken, setResumeId, setRawData]);
 
   const handleDataChange = useCallback(
     (newData: CVData) => {
-      // 1. Cancelamos cualquier timer pendiente para evitar duplicados rápidos
-      if (historyTimeoutRef.current) {
-        clearTimeout(historyTimeoutRef.current);
-      }
-
-      // 2. Definimos el snapshot del estado PREVIO al cambio actual
+      if (historyTimeoutRef.current) clearTimeout(historyTimeoutRef.current);
       const previousState = currentDataRef.current;
-
-      // 3. Establecemos un timer (Debounce).
       historyTimeoutRef.current = setTimeout(() => {
-        setPast((prev) => {
-          const newPast = [...prev, previousState];
-          if (newPast.length > 50) return newPast.slice(newPast.length - 50);
-          return newPast;
-        });
+        setPast((prev) => [...prev, previousState].slice(-50));
       }, 800);
-
-      // 4. Si la pila de "Futuro" tiene algo, se borra porque creamos una nueva línea temporal
       if (future.length > 0) setFuture([]);
-
       setRawData(newData);
       setIsDirty(true);
-      setSaveStatus('idle'); // Quitamos "Saved" porque ya cambió
+      setSaveStatus('idle');
     },
     [future.length, setRawData]
   );
@@ -174,26 +199,20 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
 
   const handleUndo = () => {
     if (past.length === 0) return;
-
     const previous = past[past.length - 1];
-    const newPast = past.slice(0, -1);
-
     setFuture([rawData, ...future]);
     setRawData(previous);
-    setPast(newPast);
+    setPast(past.slice(0, -1));
     setIsDirty(true);
     setSaveStatus('idle');
   };
 
   const handleRedo = () => {
     if (future.length === 0) return;
-
     const next = future[0];
-    const newFuture = future.slice(1);
-
     setPast([...past, rawData]);
     setRawData(next);
-    setFuture(newFuture);
+    setFuture(future.slice(1));
     setIsDirty(true);
     setSaveStatus('idle');
   };
@@ -211,12 +230,6 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
     setSaveStatus('idle');
   };
 
-  const handleTitleChange = (newTitle: string) => {
-    setResumeTitle(newTitle);
-    setIsDirty(true);
-    setSaveStatus('idle');
-  };
-
   const handleReset = () => {
     if (confirm(t.actions.confirmReset)) {
       pushImmediateHistory(rawData);
@@ -229,23 +242,14 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
   };
 
   const handleSave = useCallback(async () => {
-    // NUEVO: Bloqueo de seguridad
-    // Si ya estamos guardando, o NO hay cambios y ya está guardado, no hacemos nada.
-    if (saveStatus === 'saving' || (!isDirty && saveStatus === 'saved')) {
+    if (isGuest) {
+      triggerAuthModal();
       return;
     }
+    if (saveStatus === 'saving' || (!isDirty && saveStatus === 'saved')) return;
 
+    const token = await getToken();
     setSaveStatus('saving');
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      alert('Debes iniciar sesión para guardar tu progreso en la nube.');
-      setSaveStatus('idle');
-      return;
-    }
-
     let finalTitle = resumeTitle;
     let dataPayload = cvData;
 
@@ -255,135 +259,226 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
         const h1Match = markdown.match(/^#\s+(.*)/);
         finalTitle = h1Match ? h1Match[1].trim() : 'Markdown CV';
       }
-    } else {
-      if (!finalTitle) finalTitle = cvData.personal.role || 'Mi CV';
+    } else if (!finalTitle) {
+      finalTitle = cvData.personal.role || 'Mi CV';
     }
 
-    const payload = {
-      user_id: user.id,
-      title: finalTitle,
-      data: dataPayload,
-      language: lang,
-      theme: activeThemeId,
-      updated_at: new Date().toISOString(),
-    };
-
     try {
-      if (resumeId) {
-        const { error } = await supabase.from('resumes').update(payload).eq('id', resumeId);
-        if (error) throw error;
+      if (resumeId && resumeId !== 'null') {
+        await api.updateCV(
+          resumeId,
+          {
+            title: finalTitle,
+            content: dataPayload,
+            language: (dataPayload as unknown as { language?: string }).language || 'ES',
+          },
+          token
+        );
       } else {
-        const { data, error } = await supabase.from('resumes').insert(payload).select().single();
-        if (error) throw error;
-        if (data) setResumeId(data.id);
+        const newId = crypto.randomUUID();
+        const res = await api.createCV(
+          {
+            id: newId,
+            title: finalTitle,
+            content: dataPayload,
+            language: (dataPayload as unknown as { language?: string }).language || 'ES',
+          },
+          token
+        );
+        if (res) setResumeId(res.id);
       }
-
       setSaveStatus('saved');
       setIsDirty(false);
-      // ELIMINADO: setTimeout que reseteaba a idle. Ahora se queda en 'saved'.
-    } catch (error) {
-      console.error('Error saving CV:', error);
+      showToast('CV guardado');
+    } catch {
       setSaveStatus('error');
-      alert('Error al guardar. Revisa tu conexión.');
+      showToast('Error', 'error');
     }
   }, [
     cvData,
-    lang,
-    activeThemeId,
     resumeId,
-    setResumeId,
     resumeTitle,
     editMode,
     markdown,
     isDirty,
     saveStatus,
-  ]); // Añadidos isDirty y saveStatus
+    getToken,
+    isGuest,
+    lang,
+    showToast,
+    triggerAuthModal,
+    setResumeId,
+  ]);
 
-  const handleAiAction = async (action: 'enhance' | 'optimize' | 'translate') => {
+  const handleAiAction = async (
+    action: 'enhance' | 'optimize' | 'translate',
+    providedJd?: string
+  ) => {
+    if (isGuest) {
+      triggerAuthModal();
+      return;
+    }
+    if (!isPro) {
+      triggerAuthModal(undefined, undefined, 'upgrade');
+      return;
+    }
     setIsAiProcessing(true);
+    const token = await getToken();
     try {
-      let jobDescription = '';
-      if (action === 'optimize') {
-        const promptText =
-          (t.ai as { jobDescriptionPrompt?: string }).jobDescriptionPrompt ||
-          'Pega aquí la descripción del trabajo:';
-        jobDescription = prompt(promptText) || '';
-        if (!jobDescription) {
-          setIsAiProcessing(false);
-          return;
-        }
-      }
+      const response = await api.improveText(
+        JSON.stringify(cvData),
+        `Action: ${action}, Lang: ${lang}, JD: ${providedJd || ''}`,
+        token
+      );
+      const aiData = JSON.parse(response.improved_text) as Record<string, unknown>;
+      if (!aiData || !aiData.personal) throw new Error('Invalid AI response');
 
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, cvData, lang, jobDescription }),
-      });
+      const safeAiPersonal = (aiData.personal || {}) as Record<string, unknown>;
+      const finalAiCvData: CVData = {
+        ...rawData,
+        ...(aiData as unknown as CVData),
+        personal: {
+          ...rawData.personal,
+          name: (safeAiPersonal.name as string) || rawData.personal.name,
+          role: (safeAiPersonal.role as string) || rawData.personal.role,
+          email: (safeAiPersonal.email as string) || rawData.personal.email,
+          phone: (safeAiPersonal.phone as string) || rawData.personal.phone,
+          city: (safeAiPersonal.city as string) || rawData.personal.city,
+          summary: (safeAiPersonal.summary as string) || rawData.personal.summary,
+          socials:
+            Array.isArray(safeAiPersonal.socials) && safeAiPersonal.socials.length > 0
+              ? (safeAiPersonal.socials as CVData['personal']['socials'])
+              : rawData.personal.socials,
+        },
+        experience:
+          Array.isArray(aiData.experience) && aiData.experience.length > 0
+            ? (aiData.experience as CVData['experience'])
+            : rawData.experience,
+        education:
+          Array.isArray(aiData.education) && aiData.education.length > 0
+            ? (aiData.education as CVData['education'])
+            : rawData.education,
+        skills:
+          Array.isArray(aiData.skills) && aiData.skills.length > 0
+            ? (aiData.skills as CVData['skills'])
+            : rawData.skills,
+        certifications:
+          Array.isArray(aiData.certifications) && aiData.certifications.length > 0
+            ? (aiData.certifications as CVData['certifications'])
+            : rawData.certifications,
+        projects:
+          Array.isArray(aiData.projects) && aiData.projects.length > 0
+            ? (aiData.projects as unknown as CVData['experience'])
+            : (rawData as unknown as { projects: CVData['experience'] }).projects,
+        customSections:
+          Array.isArray(aiData.customSections) && aiData.customSections.length > 0
+            ? (aiData.customSections as unknown as CVData['experience'])
+            : (rawData as unknown as { customSections: CVData['experience'] }).customSections,
+        sectionOrder:
+          Array.isArray(aiData.sectionOrder) && aiData.sectionOrder.length > 0
+            ? (aiData.sectionOrder as string[]).map((s: string) => s.toLowerCase())
+            : (rawData as unknown as { sectionOrder: string[] }).sectionOrder,
+      };
 
-      if (!response.ok) throw new Error(`Error en la API: ${response.statusText}`);
-      const newCvData = await response.json();
-      if (!newCvData || !newCvData.personal) throw new Error('Respuesta inválida.');
-
-      pushImmediateHistory(rawData);
-      setRawData(newCvData);
-      setIsDirty(true);
-      setSaveStatus('idle'); // La IA cambió datos, ya no estamos guardados
-
-      const successMsg = {
-        enhance: t.ai.alerts.enhance,
-        translate: t.ai.alerts.translate,
-        optimize: t.ai.alerts.optimize,
-      }[action];
-      alert(successMsg);
-    } catch (error) {
-      console.error('AI Action Error:', error);
-      alert('Hubo un error al procesar tu solicitud con IA.');
+      setPendingAiData({ data: finalAiCvData, action, lang });
+      setIsChoiceModalOpen(true);
+    } catch {
+      showToast('Error con la IA', 'error');
     } finally {
       setIsAiProcessing(false);
     }
   };
 
-  const handleAtsAnalysis = async (jd: string) => {
-    try {
-      // Usamos el estado 'markdown' que ya está sincronizado
-      const response = await fetch('/api/ats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobDescription: jd,
-          cvMarkdown: markdown,
-        }),
-      });
+  const handleChoiceApplied = async (choice: 'overwrite' | 'copy') => {
+    if (!pendingAiData) return;
+    const { data: finalAiCvData, action, lang: aiLang } = pendingAiData;
+    const token = await getToken();
+    const currentSessionId = resumeId;
+    const currentManualData = { ...rawData };
+    const currentTitle = resumeTitle;
+    const targetLanguage =
+      action === 'translate' ? aiLang.toUpperCase() : currentManualData.language || 'ES';
 
-      if (!response.ok) throw new Error('Error analyzing ATS');
-      return await response.json();
-    } catch (error) {
-      console.error(error);
-      alert('Error connecting to ATS Simulator');
+    try {
+      if (choice === 'copy') {
+        setResumeId(null);
+        if (isDirty && currentSessionId && currentSessionId !== 'null') {
+          try {
+            await api.updateCV(
+              currentSessionId,
+              {
+                title: currentTitle,
+                content: currentManualData,
+                language: currentManualData.language || 'ES',
+              },
+              token
+            );
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+        const newId = crypto.randomUUID();
+        const copyTitle = `${currentTitle || 'CV'} (AI Optimized)`;
+        const created = await api.createCV(
+          { id: newId, title: copyTitle, content: finalAiCvData, language: targetLanguage },
+          token
+        );
+        if (created) {
+          setResumeId(created.id);
+          setResumeTitle(copyTitle);
+          setRawData({ ...finalAiCvData, language: targetLanguage });
+          setIsDirty(false);
+          setSaveStatus('saved');
+          window.history.replaceState(null, '', `/app/editor?id=${created.id}`);
+          showToast('Copy Created');
+        }
+      } else {
+        pushImmediateHistory(currentManualData);
+        setRawData({ ...finalAiCvData, language: targetLanguage });
+        setIsDirty(true);
+        setSaveStatus('idle');
+        showToast('Applied');
+      }
+    } catch {
+      showToast('Error', 'error');
+    } finally {
+      setIsChoiceModalOpen(false);
+      setPendingAiData(null);
+    }
+  };
+
+  const handleAtsAnalysis = async (jd: string) => {
+    if (isGuest) {
+      triggerAuthModal();
+      return null;
+    }
+    if (!isPro) {
+      triggerAuthModal(undefined, undefined, 'upgrade');
+      return null;
+    }
+    const token = await getToken();
+    try {
+      return await api.simulateATS(cvData, jd, token);
+    } catch {
+      showToast('Error ATS', 'error');
       return null;
     }
   };
 
   const handleGenerateCoverLetter = async (jd: string) => {
+    if (isGuest) {
+      triggerAuthModal();
+      return null;
+    }
+    if (!isPro) {
+      triggerAuthModal(undefined, undefined, 'upgrade');
+      return null;
+    }
+    const token = await getToken();
     try {
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'cover_letter',
-          cvData,
-          lang,
-          jobDescription: jd,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Error generando carta');
-
-      const data = await response.json();
-      return data.coverLetter || null;
-    } catch (error) {
-      console.error(error);
-      alert('Error al generar la Cover Letter. Intenta de nuevo.');
+      return await api.generateCoverLetter(cvData, jd, token);
+    } catch {
+      showToast('Error Cover Letter', 'error');
       return null;
     }
   };
@@ -405,7 +500,11 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
     handleSave,
     handleReset,
     resumeTitle,
-    setResumeTitle: handleTitleChange,
+    setResumeTitle: (nt: string) => {
+      setResumeTitle(nt);
+      setIsDirty(true);
+      setSaveStatus('idle');
+    },
     resumeId,
     isDirty,
     isAtsModalOpen,
@@ -413,10 +512,22 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en') {
     handleAtsAnalysis,
     isCoverLetterOpen,
     setIsCoverLetterOpen,
+    isOptimizeModalOpen,
+    setIsOptimizeModalOpen,
+    isChoiceModalOpen,
+    setIsChoiceModalOpen,
+    handleChoiceApplied,
     handleGenerateCoverLetter,
     handleUndo,
     handleRedo,
     canUndo: past.length > 0,
     canRedo: future.length > 0,
+    isGuest,
+    isPro,
+    isAuthModalOpen,
+    setIsAuthModalOpen,
+    authModalConfig,
+    toasts,
+    removeToast,
   };
 }

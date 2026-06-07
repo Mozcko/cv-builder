@@ -337,6 +337,7 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
         </div>
       ) : (
         sectionOrder.map((sectionId: string, index: number) => {
+          const normalizedId = sectionId.toLowerCase();
           const headerProps = {
             onMoveUp: () => moveSection(index, 'up'),
             onMoveDown: () => moveSection(index, 'down'),
@@ -347,16 +348,10 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
 
           let content = null;
 
-          if (sectionId === 'experience') {
+          if (normalizedId === 'experience') {
             content = (
               <section>
                 <SectionHeader title={t.sections.experience} onAdd={addExp} {...headerProps} />
-                <button
-                  onClick={addExp}
-                  className="rounded bg-blue-600 px-3 py-1.5 text-xs font-bold tracking-wider text-white uppercase shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-500"
-                >
-                  {t.actions.add}
-                </button>
                 <div className="mt-4 space-y-6">
                   {data.experience.map((exp, idx) => (
                     <ExperienceItem
@@ -371,7 +366,7 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
                 </div>
               </section>
             );
-          } else if (sectionId === 'projects') {
+          } else if (normalizedId === 'projects') {
             content = (
               <section>
                 <SectionHeader title={t.sections.projects} onAdd={addProject} {...headerProps} />
@@ -389,7 +384,7 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
                 </div>
               </section>
             );
-          } else if (sectionId === 'education') {
+          } else if (normalizedId === 'education') {
             content = (
               <section>
                 <SectionHeader title={t.sections.edu} onAdd={addEdu} {...headerProps} />
@@ -407,7 +402,7 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
                 </div>
               </section>
             );
-          } else if (sectionId === 'skills') {
+          } else if (normalizedId === 'skills') {
             content = (
               <section>
                 <SectionHeader title={t.sections.skills} {...headerProps} />
@@ -440,7 +435,7 @@ export default function CVForm({ data, onChange, t, isReordering, onReorderFinis
                 </div>
               </section>
             );
-          } else if (sectionId === 'custom') {
+          } else if (normalizedId === 'custom') {
             content = (
               <section>
                 <SectionHeader title={t.sections.custom} {...headerProps} />

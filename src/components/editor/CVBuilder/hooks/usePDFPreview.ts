@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@clerk/astro/react';
 import type { CVData } from '../../../../types/cv';
 
 export function usePDFPreview(
@@ -8,6 +9,7 @@ export function usePDFPreview(
   windowWidth: number,
   cvData: CVData
 ) {
+  const { userId } = useAuth();
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pageCount, setPageCount] = useState(1);
@@ -35,6 +37,11 @@ export function usePDFPreview(
   }, [markdown, customCSS, mobileTab, windowWidth, isStale]);
 
   const generatePDF = async (mode: 'save' | 'preview') => {
+    if (mode === 'save' && !userId) {
+      alert('Regístrate gratis para descargar tu currículum en PDF de alta calidad.');
+      return;
+    }
+
     const element = sourceRef.current;
     if (!element) return;
 

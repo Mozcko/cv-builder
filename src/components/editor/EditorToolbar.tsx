@@ -5,7 +5,7 @@ import UserMenu from '../auth/UserMenu'; // Importamos el menú de usuario desde
 
 interface EditorToolbarProps {
   t: Translation;
-  lang: 'es' | 'en';
+  lang: 'es' | 'en' | 'pt';
   toggleLang: () => void;
   onReset: () => void;
   onPrint: () => void;
@@ -25,6 +25,7 @@ interface EditorToolbarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  isPro: boolean;
 }
 
 export default function EditorToolbar({
@@ -45,13 +46,16 @@ export default function EditorToolbar({
   onRedo,
   canUndo,
   canRedo,
+  isPro,
 }: EditorToolbarProps) {
+  const langPrefix = lang === 'es' ? '' : `/${lang}`;
+
   return (
     <header className="bg-panel-bg border-panel-border relative z-10 flex shrink-0 items-center justify-between border-b px-2 py-3 shadow-sm md:px-4 print:hidden">
       {/* IZQUIERDA: Título + Banderas */}
       <div className="flex items-center gap-2 md:gap-4 lg:gap-6">
         <a
-          href="/app/dashboard"
+          href={`${langPrefix}/app/dashboard`}
           className="flex items-center gap-2 transition-opacity hover:opacity-80"
           title="Volver al Dashboard"
         >
@@ -91,14 +95,22 @@ export default function EditorToolbar({
           />
         </div>
 
-        {/* Toggle de Banderas */}
+        {/* Toggle de Banderas (3 Idiomas) */}
         <button
           onClick={toggleLang}
-          className="relative flex w-14 cursor-pointer items-center justify-between rounded-full border border-slate-600 bg-slate-800 p-1 shadow-inner transition-all hover:border-slate-500"
-          title={lang === 'es' ? 'Cambiar a Inglés' : 'Switch to Spanish'}
+          className="relative flex w-20 cursor-pointer items-center justify-between rounded-full border border-slate-600 bg-slate-800 p-1 shadow-inner transition-all hover:border-slate-500"
+          title={
+            lang === 'es'
+              ? 'Cambiar a Inglés'
+              : lang === 'en'
+                ? 'Mudar para Português'
+                : 'Cambiar a Español'
+          }
         >
           <div
-            className={`absolute left-1 h-6 w-6 transform rounded-full bg-slate-600 shadow-md transition-all duration-300 ease-out ${lang === 'en' ? 'translate-x-6' : 'translate-x-0'}`}
+            className={`absolute left-1 h-6 w-6 transform rounded-full bg-slate-600 shadow-md transition-all duration-300 ease-out ${
+              lang === 'es' ? 'translate-x-0' : lang === 'en' ? 'translate-x-6' : 'translate-x-12'
+            }`}
           ></div>
           <div
             className={`relative z-10 flex h-6 w-6 items-center justify-center text-sm transition-opacity duration-300 ${lang === 'es' ? 'opacity-100' : 'opacity-40 grayscale'}`}
@@ -109,6 +121,11 @@ export default function EditorToolbar({
             className={`relative z-10 flex h-6 w-6 items-center justify-center text-sm transition-opacity duration-300 ${lang === 'en' ? 'opacity-100' : 'opacity-40 grayscale'}`}
           >
             🇺🇸
+          </div>
+          <div
+            className={`relative z-10 flex h-6 w-6 items-center justify-center text-sm transition-opacity duration-300 ${lang === 'pt' ? 'opacity-100' : 'opacity-40 grayscale'}`}
+          >
+            🇧🇷
           </div>
         </button>
       </div>
@@ -170,6 +187,7 @@ export default function EditorToolbar({
           onTranslate={() => onAiAction('translate')}
           onAtsSimulator={onAtsSimulator}
           onCoverLetter={onCoverLetter}
+          isPro={isPro}
         />
 
         {/* 4. Acciones: Reset & Download */}
@@ -281,7 +299,7 @@ export default function EditorToolbar({
         <div className="mx-1 h-6 w-px bg-slate-700"></div>
 
         {/* 5. Menú de Usuario (Avatar + Salir) */}
-        <UserMenu />
+        <UserMenu lang={lang} isPro={isPro} />
       </div>
     </header>
   );

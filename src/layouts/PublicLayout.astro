@@ -1,24 +1,27 @@
 ---
 import Layout from './Layout.astro';
 import SiteHeader from '../components/ui/SiteHeader';
+import { getLangFromUrl, useUiTranslations } from '../i18n/utils';
 
 interface Props {
-	title: string;
+  title: string;
 }
 
 const { title } = Astro.props;
+const lang = getLangFromUrl(Astro.url);
+const t = useUiTranslations(lang);
 ---
 
 <Layout title={title}>
-    <SiteHeader client:load />
-    
-    <div class="pt-16 min-h-screen flex flex-col">
-        <slot />
-    </div>
+  <SiteHeader lang={lang} client:only="react" />
 
-    <footer class="border-t border-white/10 py-8 mt-auto bg-slate-900 text-center">
-        <div class="container mx-auto px-4 text-slate-500 text-sm">
-            <p>&copy; {new Date().getFullYear()} CVStudio.tools. Todos los derechos reservados.</p>
-        </div>
-    </footer>
+  <div class="flex min-h-screen flex-col pt-16">
+    <slot />
+  </div>
+
+  <footer class="mt-auto border-t border-white/10 bg-slate-900 py-8 text-center">
+    <div class="container mx-auto px-4 text-sm text-slate-500">
+      <p>&copy; {new Date().getFullYear()} CVStudio.tools. {t('footer.rights')}</p>
+    </div>
+  </footer>
 </Layout>

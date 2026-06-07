@@ -1,0 +1,31 @@
+---
+import { SignIn } from '@clerk/astro/components';
+import PublicLayout from '../../layouts/PublicLayout.astro';
+
+const { lang } = Astro.params;
+---
+
+<PublicLayout title={lang === 'en' ? 'Sign In | CVStudio' : 'Entrar | CVStudio'}>
+  <div
+    class="from-app-bg flex flex-1 items-center justify-center bg-gradient-to-b to-slate-900 px-4 py-12"
+  >
+    <SignIn
+      appearance={{
+        elements: {
+          rootBox: 'mx-auto',
+          card: 'bg-slate-800 border border-slate-700 shadow-xl',
+          headerTitle: 'text-white',
+          headerSubtitle: 'text-slate-400',
+          socialButtonsBlockButton: 'bg-slate-700 border-slate-600 text-white hover:bg-slate-600',
+          formButtonPrimary: 'bg-blue-600 hover:bg-blue-500 text-white',
+          formFieldLabel: 'text-slate-300',
+          formFieldInput: 'bg-slate-900 border-slate-700 text-white',
+          footerActionText: 'text-slate-400',
+          footerActionLink: 'text-blue-400 hover:text-blue-300',
+          identityPreviewText: 'text-white',
+          identityPreviewEditButtonIcon: 'text-slate-400',
+        },
+      }}
+    />
+  </div>
+</PublicLayout>

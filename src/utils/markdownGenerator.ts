@@ -1,7 +1,13 @@
 import type { CVData, SkillItem, SocialLink } from '../types/cv';
 
-const formatDate = (dateString: string | null, isCurrent: boolean, lang: 'es' | 'en'): string => {
-  if (isCurrent) return lang === 'es' ? 'Presente' : 'Present';
+const formatDate = (
+  dateString: string | null,
+  isCurrent: boolean,
+  lang: 'es' | 'en' | 'pt'
+): string => {
+  if (isCurrent) {
+    return lang === 'es' ? 'Presente' : lang === 'pt' ? 'Presente' : 'Present';
+  }
   if (!dateString) return '';
   const [year, month] = dateString.split('-');
   const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -20,11 +26,9 @@ const generateBulletList = (items: string[]): string => {
   return items.map((item) => `- ${item}`).join('\n');
 };
 
-// NUEVO: Helper para generar enlaces sociales dinámicos
-// Soluciona el error de 'platform' vs 'network' y la limitación de links fijos
+// Helper para generar enlaces sociales dinámicos
 const generateSocialLinks = (socials: SocialLink[]): string => {
   if (!Array.isArray(socials)) return '';
-  // Genera: **[LinkedIn](url)** | **[GitHub](url)** ...
   return socials.map((link) => `**[${link.network}](${link.url})**`).join(' | ');
 };
 
@@ -46,8 +50,7 @@ interface CustomSection {
   }[];
 }
 
-export const generateMarkdown = (data: CVData, lang: 'es' | 'en' = 'en'): string => {
-  // Cast a any para soportar campos nuevos (projects, customSections) si la interfaz CVData no está actualizada
+export const generateMarkdown = (data: CVData, lang: 'es' | 'en' | 'pt' = 'en'): string => {
   const {
     personal,
     experience,
@@ -57,20 +60,18 @@ export const generateMarkdown = (data: CVData, lang: 'es' | 'en' = 'en'): string
     projects,
     customSections,
     sectionOrder,
-  } = data as CVData & {
+  } = data as unknown as CVData & {
     projects?: Project[];
     customSections?: CustomSection[];
     sectionOrder?: string[];
   };
 
-  // Generamos la línea de contactos usando la función dinámica
   const socialLinksLine = generateSocialLinks(personal.socials);
 
   const experienceSection = experience
     .map((exp) => {
       const start = formatDate(exp.startDate, false, lang);
       const end = formatDate(exp.endDate, exp.isCurrent, lang);
-
       const descriptionBullets = generateBulletList(exp.description);
 
       return `
@@ -90,7 +91,6 @@ ${descriptionBullets}
     })
     .join('\n');
 
-  // --- NUEVO: PROYECTOS ---
   let projectsSection = '';
   if (projects && projects.length > 0) {
     projectsSection = projects
@@ -124,7 +124,6 @@ ${descriptionBullets}
     })
     .join('\n<br>\n');
 
-  // --- NUEVO: SECCIONES PERSONALIZADAS ---
   let customSectionsContent = '';
   if (customSections && customSections.length > 0) {
     customSectionsContent = customSections
@@ -144,28 +143,38 @@ ${item.description}
       .join('\n\n');
   }
 
-  const titles =
-    lang === 'es'
-      ? {
-          exp: 'Experiencia Profesional',
-          skills: 'Habilidades Técnicas',
-          edu: 'Educación',
-          certs: 'Certificaciones',
-          lang: 'Idiomas',
-          int: 'Intereses',
-          projects: 'Proyectos Destacados',
-        }
-      : {
-          exp: 'Professional Experience',
-          skills: 'Technical Skills',
-          edu: 'Education',
-          certs: 'Certifications',
-          lang: 'Languages',
-          int: 'Interests',
-          projects: 'Key Projects',
-        };
+  const titlesMap: Record<string, Record<string, string>> = {
+    es: {
+      exp: 'Experiencia Profesional',
+      skills: 'Habilidades Técnicas',
+      edu: 'Educación',
+      certs: 'Certificaciones',
+      lang: 'Idiomas',
+      int: 'Intereses',
+      projects: 'Proyectos Destacados',
+    },
+    en: {
+      exp: 'Professional Experience',
+      skills: 'Technical Skills',
+      edu: 'Education',
+      certs: 'Certifications',
+      lang: 'Languages',
+      int: 'Interests',
+      projects: 'Key Projects',
+    },
+    pt: {
+      exp: 'Experiência Profissional',
+      skills: 'Habilidades Técnicas',
+      edu: 'Educação',
+      certs: 'Certificações',
+      lang: 'Idiomas',
+      int: 'Interesses',
+      projects: 'Projetos em Destaque',
+    },
+  };
 
-  // --- CONSTRUCCIÓN DINÁMICA DE SECCIONES ---
+  const titles = titlesMap[lang] || titlesMap.en;
+
   const sectionsMap: Record<string, string> = {
     experience: experienceSection ? `\n## ${titles.exp}\n\n${experienceSection}` : '',
     projects: projectsSection ? `\n## ${titles.projects}\n\n${projectsSection}` : '',
@@ -183,7 +192,9 @@ ${item.description}
     })(),
   };
 
-  const order = sectionOrder || ['experience', 'projects', 'education', 'skills', 'custom'];
+  const order = (sectionOrder || ['experience', 'projects', 'education', 'skills', 'custom']).map(
+    (s) => s.toLowerCase()
+  );
 
   let md = `
 # ${personal.name}
