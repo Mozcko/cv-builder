@@ -170,8 +170,21 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
             setSaveStatus('saved');
           }
         }
-      } catch (err: unknown) {
+      } catch (err: any) {
         console.error(err);
+        if (err.status === 404) {
+          setResumeId(null);
+          // Limpiar el ID inválido de la URL sin recargar
+          window.history.replaceState(null, '', window.location.pathname);
+          showToast(
+            lang === 'es'
+              ? 'CV no encontrado, iniciando uno nuevo'
+              : lang === 'pt'
+                ? 'CV não encontrado, iniciando um novo'
+                : 'CV not found, starting fresh',
+            'info'
+          );
+        }
       }
     };
     initData();
@@ -265,15 +278,36 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
 
     try {
       if (resumeId && resumeId !== 'null') {
-        await api.updateCV(
-          resumeId,
-          {
-            title: finalTitle,
-            content: dataPayload,
-            language: (dataPayload as unknown as { language?: string }).language || 'ES',
-          },
-          token
-        );
+        try {
+          await api.updateCV(
+            resumeId,
+            {
+              title: finalTitle,
+              content: dataPayload,
+              language: (dataPayload as unknown as { language?: string }).language || 'ES',
+            },
+            token
+          );
+        } catch (err: any) {
+          if (err.status === 404) {
+            // Si el ID es inválido/stale, creamos uno nuevo
+            const res = await api.createCV(
+              {
+                id: crypto.randomUUID(),
+                title: finalTitle,
+                content: dataPayload,
+                language: (dataPayload as unknown as { language?: string }).language || 'ES',
+              },
+              token
+            );
+            if (res) {
+              setResumeId(res.id);
+              window.history.replaceState(null, '', `/app/editor?id=${res.id}`);
+            }
+          } else {
+            throw err;
+          }
+        }
       } else {
         const newId = crypto.randomUUID();
         const res = await api.createCV(
@@ -285,14 +319,21 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
           },
           token
         );
-        if (res) setResumeId(res.id);
+        if (res) {
+          setResumeId(res.id);
+          window.history.replaceState(null, '', `/app/editor?id=${res.id}`);
+        }
       }
       setSaveStatus('saved');
       setIsDirty(false);
-      showToast('CV guardado');
-    } catch {
+      showToast(lang === 'es' ? 'CV guardado' : lang === 'pt' ? 'Currículo salvo' : 'CV saved');
+    } catch (error) {
+      console.error('Save error:', error);
       setSaveStatus('error');
-      showToast('Error', 'error');
+      showToast(
+        lang === 'es' ? 'Error al guardar' : lang === 'pt' ? 'Erro ao salvar' : 'Error saving',
+        'error'
+      );
     }
   }, [
     cvData,
@@ -308,6 +349,7 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     showToast,
     triggerAuthModal,
     setResumeId,
+    setResumeTitle,
   ]);
 
   const handleAiAction = async (
