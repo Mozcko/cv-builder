@@ -113,4 +113,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ plan_type }),
     }),
+
+  redeemPromo: (code: string, token: string | null) =>
+    apiRequest<{ success: boolean; message: string; granted_days: number }>(
+      '/promo/redeem',
+      token,
+      {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      }
+    ),
 };

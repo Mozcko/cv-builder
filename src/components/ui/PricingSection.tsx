@@ -4,11 +4,26 @@ import { useUiTranslations } from '../../i18n/utils';
 import type { locales } from '../../i18n/locales';
 import useProStatus from '../../hooks/useProStatus';
 
-export default function PricingSection({ lang = 'es' }: { lang?: keyof typeof locales }) {
+export default function PricingSection({
+  lang = 'es',
+  isStandalonePage = false,
+}: {
+  lang?: keyof typeof locales;
+  isStandalonePage?: boolean;
+}) {
   const { userId, getToken } = useAuth();
   const { isPro } = useProStatus();
   const [loadingPlan, setLoadingPlan] = useState<'7' | '30' | 'lifetime' | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<{
+    text: string;
+    type: 'success' | 'error';
+  } | null>(null);
+  const clickCountRef = React.useRef(0);
+  const [secretRevealed, setSecretRevealed] = useState(false);
   const t = useUiTranslations(lang);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pricing = (t('pricing') || {}) as Record<string, any>;
   const langPrefix = lang === 'es' ? '' : `/${lang}`;
 
@@ -59,10 +74,65 @@ export default function PricingSection({ lang = 'es' }: { lang?: keyof typeof lo
     }
   };
 
+  const handleRedeemPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setPromoMessage(null);
+    try {
+      const token = await getToken();
+
+      const response = await fetch(`${import.meta.env.PUBLIC_API_URL}/promo/redeem`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code: promoCode }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Invalid promo code');
+      }
+
+      const res = await response.json();
+      if (res && res.success) {
+        setPromoMessage({ text: 'Promo redeemed successfully! Reloading...', type: 'success' });
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+    } catch (error: unknown) {
+      setPromoMessage({
+        text: (error as { message?: string }).message || 'Invalid promo code',
+        type: 'error',
+      });
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleTitleClick = () => {
+    if (!isStandalonePage) return;
+    clickCountRef.current += 1;
+    if (clickCountRef.current >= 5) {
+      setSecretRevealed(true);
+    }
+  };
+
   return (
-    <section id="pricing" className="mt-32 w-full max-w-6xl border-t border-white/5 py-20">
+    <section
+      id="pricing"
+      className="mx-auto mt-32 w-full max-w-6xl border-t border-white/5 px-4 py-20"
+    >
       <div className="mb-16 text-center">
-        <h2 className="mb-4 text-4xl font-bold tracking-tight text-white">{pricing.title}</h2>
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
+        <h2
+          className="mb-4 cursor-default text-4xl font-bold tracking-tight text-white select-none"
+          onClick={handleTitleClick}
+        >
+          {pricing.title}
+        </h2>
         <p className="text-slate-400">{pricing.description}</p>
       </div>
 
@@ -184,6 +254,36 @@ export default function PricingSection({ lang = 'es' }: { lang?: keyof typeof lo
           </button>
         </div>
       </div>
+
+      {/* Promo Code Section (Hidden by default) */}
+      {isStandalonePage && secretRevealed && (
+        <div className="animate-in fade-in zoom-in-95 mx-auto mt-12 max-w-lg rounded-xl border border-slate-700 bg-slate-800/50 p-6 shadow-xl transition-all duration-500">
+          <h4 className="mb-2 text-sm font-bold text-white">Have a Promo Code?</h4>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter code (e.g. LIFETIME2026)"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value)}
+              className="w-full flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+            />
+            <button
+              disabled={promoLoading || !promoCode.trim() || isPro}
+              onClick={handleRedeemPromo}
+              className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+            >
+              {promoLoading ? '...' : 'Redeem'}
+            </button>
+          </div>
+          {promoMessage && (
+            <p
+              className={`mt-2 text-xs font-semibold ${promoMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}
+            >
+              {promoMessage.text}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Feature Comparison Table */}
       <div className="mt-20 overflow-x-auto">

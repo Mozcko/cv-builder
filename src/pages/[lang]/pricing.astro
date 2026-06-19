@@ -19,6 +19,6 @@ const pricingNav = t('nav.pricing');
   <SiteHeader lang={lang} client:only="react" />
 
   <div class="flex min-h-screen flex-col items-center justify-center pt-24 pb-16">
-    <PricingSection lang={lang} client:only="react" />
+    <PricingSection lang={lang} isStandalonePage={true} client:only="react" />
   </div>
 </AppLayout>

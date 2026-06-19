@@ -13,10 +13,16 @@ interface UpgradeModalProps {
 export default function UpgradeModal({ isOpen, onClose, lang = 'es' }: UpgradeModalProps) {
   const { getToken } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState<'7' | '30' | 'lifetime' | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<{
+    text: string;
+    type: 'success' | 'error';
+  } | null>(null);
   const t = useUiTranslations(lang);
 
   const pricingTranslations = (t('pricing') || {}) as Record<string, unknown>;
-  const plans = (pricingTranslations.plans || {}) as Record<string, any>;
+  const plans = (pricingTranslations.plans || {}) as Record<string, Record<string, unknown>>;
 
   const tiers = [
     {
@@ -57,6 +63,29 @@ export default function UpgradeModal({ isOpen, onClose, lang = 'es' }: UpgradeMo
     } catch (error: unknown) {
       console.error('Checkout error:', error);
       setLoadingPlan(null);
+    }
+  };
+
+  const handleRedeemPromo = async () => {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setPromoMessage(null);
+    try {
+      const token = await getToken();
+      const res = await api.redeemPromo(promoCode, token);
+      if (res && res.success) {
+        setPromoMessage({ text: 'Promo redeemed successfully! Reloading...', type: 'success' });
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+    } catch (error: unknown) {
+      setPromoMessage({
+        text: (error as { message?: string }).message || 'Invalid promo code',
+        type: 'error',
+      });
+    } finally {
+      setPromoLoading(false);
     }
   };
 
@@ -116,6 +145,34 @@ export default function UpgradeModal({ isOpen, onClose, lang = 'es' }: UpgradeMo
                 </button>
               </div>
             ))}
+          </div>
+
+          {/* Promo Code Section */}
+          <div className="mt-8 rounded-xl border border-slate-700 bg-slate-800/50 p-6">
+            <h4 className="mb-2 text-sm font-bold text-white">Have a Promo Code?</h4>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Enter code..."
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value)}
+                className="w-full flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+              />
+              <button
+                disabled={promoLoading || !promoCode.trim()}
+                onClick={handleRedeemPromo}
+                className="rounded-lg bg-slate-700 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+              >
+                {promoLoading ? '...' : 'Redeem'}
+              </button>
+            </div>
+            {promoMessage && (
+              <p
+                className={`mt-2 text-xs font-semibold ${promoMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}
+              >
+                {promoMessage.text}
+              </p>
+            )}
           </div>
 
           <button

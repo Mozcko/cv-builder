@@ -12,7 +12,7 @@ const pricingNav = t('nav.pricing');
 <AppLayout title={`${pricingNav} | CV Studio`}>
   <SiteHeader lang={lang} client:only="react" />
 
-  <div class="flex min-h-screen flex-col items-center justify-center pt-24 pb-16">
-    <PricingSection lang={lang} client:only="react" />
-  </div>
+  <main class="relative z-10 flex flex-col items-center justify-center px-4 pt-24 pb-16">
+    <PricingSection lang={lang} isStandalonePage={true} client:only="react" />
+  </main>
 </AppLayout>
