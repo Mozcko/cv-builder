@@ -4,6 +4,7 @@ import { api } from '../../../../lib/api';
 import useLocalStorage from '../../../../hooks/useLocalStorage';
 import { initialCVData, type CVData } from '../../../../types/cv';
 import { generateMarkdown } from '../../../../utils/markdownGenerator';
+import { parseMarkdownToCV } from '../../../../utils/markdownParser';
 import type { CvTheme } from '../../../../templates';
 import { themes } from '../../../../templates';
 import type { Translation } from '../../../../i18n/locales';
@@ -76,6 +77,8 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
   const [future, setFuture] = useState<CVData[]>([]);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentDataRef = useRef<CVData>(rawData);
+  const currentMarkdownRef = useRef<string>('');
+  const currentTitleRef = useRef<string>('');
 
   useEffect(() => {
     currentDataRef.current = rawData;
@@ -86,6 +89,21 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
   const [markdown, setMarkdownState] = useState<string>('');
   const [editMode, setEditMode] = useState<'form' | 'code'>('form');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return !!params.get('id');
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    currentMarkdownRef.current = markdown;
+  }, [markdown]);
+
+  useEffect(() => {
+    currentTitleRef.current = resumeTitle;
+  }, [resumeTitle]);
 
   const cvData = useMemo(() => {
     const personal = {
@@ -140,10 +158,11 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
   }, [rawData]);
 
   useEffect(() => {
-    if (editMode === 'form') {
+    // Only generate markdown if we are in form mode AND not currently loading/initializing
+    if (!isInitializing && editMode === 'form' && saveStatus !== 'saving') {
       setMarkdownState(generateMarkdown(cvData, lang));
     }
-  }, [cvData, editMode, lang]);
+  }, [cvData, editMode, lang, saveStatus, isInitializing]);
 
   useEffect(() => {
     const initData = async () => {
@@ -157,12 +176,24 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
           setResumeId(urlId);
           const data = await api.getCV(urlId, token);
           if (data && data.content) {
-            const userCvData = data.content as Record<string, unknown>;
-            if (userCvData.mode === 'markdown') {
-              setMarkdownState(userCvData.markdown as string);
+            let userCvData = data.content as Record<string, unknown>;
+            if (typeof data.content === 'string') {
+              try {
+                userCvData = JSON.parse(data.content);
+              } catch (e) {
+                console.error('Failed to parse cv content string', e);
+              }
+            }
+
+            if (userCvData && userCvData.mode === 'markdown') {
+              const mdContent = (userCvData.markdown as string) || '';
+              setMarkdownState(mdContent);
               setEditMode('code');
             } else {
-              setRawData({ ...(userCvData as unknown as CVData), language: data.language || 'ES' });
+              setRawData({
+                ...(userCvData as unknown as CVData),
+                language: data.language || 'ES',
+              } as unknown as CVData);
               setEditMode('form');
             }
             if (data.title) setResumeTitle(data.title);
@@ -172,10 +203,30 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
         }
       } catch (err: unknown) {
         console.error(err);
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'status' in err &&
+          (err as { status: number }).status === 404
+        ) {
+          setResumeId(null);
+          // Limpiar el ID inválido de la URL sin recargar
+          window.history.replaceState(null, '', window.location.pathname);
+          showToast(
+            lang === 'es'
+              ? 'CV no encontrado, iniciando uno nuevo'
+              : lang === 'pt'
+                ? 'CV não encontrado, iniciando um novo'
+                : 'CV not found, starting fresh',
+            'info'
+          );
+        }
+      } finally {
+        setIsInitializing(false);
       }
     };
     initData();
-  }, [isLoaded, userId, getToken, setResumeId, setRawData]);
+  }, [isLoaded, userId, getToken, setResumeId, setRawData, lang, showToast]);
 
   const handleDataChange = useCallback(
     (newData: CVData) => {
@@ -230,6 +281,43 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     setSaveStatus('idle');
   };
 
+  /**
+   * Intercept mode switching: when going code → form, parse the current
+   * markdown into CVData. If parsing fails, stay in code mode and warn.
+   */
+  const handleSetEditMode = (mode: 'form' | 'code') => {
+    if (mode === 'form' && editMode === 'code') {
+      const parseResult = parseMarkdownToCV(markdown, lang);
+
+      let translationSuccess = false;
+      if (parseResult.success && parseResult.data) {
+        const regenerated = generateMarkdown(parseResult.data as unknown as CVData, lang);
+        const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+        if (normalize(markdown) === normalize(regenerated)) {
+          translationSuccess = true;
+        }
+      }
+
+      if (translationSuccess && parseResult.data) {
+        setRawData({
+          ...(parseResult.data as unknown as CVData),
+          language: lang.toUpperCase(),
+        } as unknown as CVData);
+        setEditMode('form');
+      } else {
+        showToast(
+          (t.header as Record<string, string>).parseError ||
+            'Could not convert custom markdown to visual editor perfectly. Reverting to code mode to prevent data loss.',
+          'error'
+        );
+        console.warn('Lossy markdown translation detected. Staying in code mode.');
+        return;
+      }
+    } else {
+      setEditMode(mode);
+    }
+  };
+
   const handleReset = () => {
     if (confirm(t.actions.confirmReset)) {
       pushImmediateHistory(rawData);
@@ -248,32 +336,65 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     }
     if (saveStatus === 'saving' || (!isDirty && saveStatus === 'saved')) return;
 
+    // Capture the data being saved to check for race conditions later
+    const dataBeingSaved = { ...rawData };
+    const markdownBeingSaved = markdown;
+    const titleBeingSaved = resumeTitle;
+
     const token = await getToken();
     setSaveStatus('saving');
-    let finalTitle = resumeTitle;
+    let finalTitle = titleBeingSaved;
     let dataPayload = cvData;
 
     if (editMode === 'code') {
-      dataPayload = { mode: 'markdown', markdown } as unknown as CVData;
+      dataPayload = { mode: 'markdown', markdown: markdownBeingSaved } as unknown as CVData;
       if (!finalTitle) {
-        const h1Match = markdown.match(/^#\s+(.*)/);
+        const h1Match = markdownBeingSaved.match(/^#\s+(.*)/);
         finalTitle = h1Match ? h1Match[1].trim() : 'Markdown CV';
+        setResumeTitle(finalTitle);
       }
     } else if (!finalTitle) {
       finalTitle = cvData.personal.role || 'Mi CV';
+      setResumeTitle(finalTitle);
     }
 
     try {
       if (resumeId && resumeId !== 'null') {
-        await api.updateCV(
-          resumeId,
-          {
-            title: finalTitle,
-            content: dataPayload,
-            language: (dataPayload as unknown as { language?: string }).language || 'ES',
-          },
-          token
-        );
+        try {
+          await api.updateCV(
+            resumeId,
+            {
+              title: finalTitle,
+              content: dataPayload,
+              language: (dataPayload as unknown as { language?: string }).language || 'ES',
+            },
+            token
+          );
+        } catch (err: unknown) {
+          if (
+            typeof err === 'object' &&
+            err !== null &&
+            'status' in err &&
+            (err as { status: number }).status === 404
+          ) {
+            // Si el ID es inválido/stale, creamos uno nuevo
+            const res = await api.createCV(
+              {
+                id: crypto.randomUUID(),
+                title: finalTitle,
+                content: dataPayload,
+                language: (dataPayload as unknown as { language?: string }).language || 'ES',
+              },
+              token
+            );
+            if (res) {
+              setResumeId(res.id);
+              window.history.replaceState(null, '', `/app/editor?id=${res.id}`);
+            }
+          } else {
+            throw err;
+          }
+        }
       } else {
         const newId = crypto.randomUUID();
         const res = await api.createCV(
@@ -285,17 +406,39 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
           },
           token
         );
-        if (res) setResumeId(res.id);
+        if (res) {
+          setResumeId(res.id);
+          window.history.replaceState(null, '', `/app/editor?id=${res.id}`);
+        }
       }
+
       setSaveStatus('saved');
-      setIsDirty(false);
-      showToast('CV guardado');
-    } catch {
+
+      // Only clear isDirty if the data hasn't changed while we were saving
+      const hasChangedSinceStart =
+        JSON.stringify(currentDataRef.current) !== JSON.stringify(dataBeingSaved) ||
+        currentMarkdownRef.current !== markdownBeingSaved ||
+        currentTitleRef.current !== titleBeingSaved;
+
+      if (!hasChangedSinceStart) {
+        setIsDirty(false);
+      } else {
+        // If it changed, set status back to idle so auto-save or manual save can trigger again
+        setSaveStatus('idle');
+      }
+
+      showToast(lang === 'es' ? 'CV guardado' : lang === 'pt' ? 'Currículo salvo' : 'CV saved');
+    } catch (error) {
+      console.error('Save error:', error);
       setSaveStatus('error');
-      showToast('Error', 'error');
+      showToast(
+        lang === 'es' ? 'Error al guardar' : lang === 'pt' ? 'Erro ao salvar' : 'Error saving',
+        'error'
+      );
     }
   }, [
     cvData,
+    rawData, // Added rawData to dependencies to be safe
     resumeId,
     resumeTitle,
     editMode,
@@ -308,6 +451,7 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     showToast,
     triggerAuthModal,
     setResumeId,
+    setResumeTitle,
   ]);
 
   const handleAiAction = async (
@@ -493,7 +637,7 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     markdown,
     setMarkdown: handleMarkdownChange,
     editMode,
-    setEditMode,
+    setEditMode: handleSetEditMode,
     isAiProcessing,
     handleAiAction,
     saveStatus,
@@ -529,5 +673,6 @@ export function useCVLogic(t: Translation, lang: 'es' | 'en' | 'pt') {
     authModalConfig,
     toasts,
     removeToast,
+    isInitializing,
   };
 }

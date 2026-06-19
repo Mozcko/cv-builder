@@ -65,6 +65,7 @@ export default function CVBuilder() {
     authModalConfig,
     toasts,
     removeToast,
+    isInitializing,
   } = cvLogic;
 
   const pdfPreview = usePDFPreview(markdown, customCSS, mobileTab, windowWidth, cvData);
@@ -118,7 +119,7 @@ export default function CVBuilder() {
     return () => clearTimeout(timer);
   }, [resumeId, saveStatus, handleSave, isDirty]);
 
-  if (!isMounted)
+  if (!isMounted || isInitializing)
     return (
       <div className="bg-app-bg flex h-screen items-center justify-center text-slate-400">
         Cargando...

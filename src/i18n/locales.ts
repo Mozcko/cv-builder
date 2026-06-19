@@ -140,6 +140,8 @@ export const locales = {
       codeEditor: 'Código Markdown',
       editorWarning:
         'Modo Avanzado: Los cambios directos al código no actualizan el editor visual.',
+      parseError:
+        'No se pudo convertir el markdown al editor visual. Permaneciendo en modo código.',
       preview: 'Vista Previa',
       editor: 'Editor',
       emptyFieldsNotice: 'Los campos vacíos se ocultarán automáticamente en el documento.',
@@ -404,6 +406,7 @@ export const locales = {
       visualEditor: 'Visual Editor',
       codeEditor: 'Markdown Code',
       editorWarning: 'Advanced Mode: Direct code changes do not update the visual editor.',
+      parseError: 'Could not convert markdown to visual editor. Staying in code mode.',
       preview: 'Preview',
       editor: 'Editor',
       emptyFieldsNotice: 'Empty fields will be automatically hidden in the document.',
@@ -667,6 +670,8 @@ export const locales = {
       visualEditor: 'Editor Visual',
       codeEditor: 'Código Markdown',
       editorWarning: 'Modo Avançado: Alterações diretas no código não atualizam o editor visual.',
+      parseError:
+        'Não foi possível converter o markdown para o editor visual. Permanecendo no modo código.',
       preview: 'Visualização',
       editor: 'Editor',
       emptyFieldsNotice: 'Campos vazios serão ocultados automaticamente no documento.',
