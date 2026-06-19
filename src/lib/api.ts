@@ -50,12 +50,13 @@ interface CVDetail {
 export const api = {
   // User Profile
   getUserProfile: (token: string | null) =>
-    apiRequest<{ id: string; is_pro: boolean }>('/users/me', token),
+    apiRequest<{ id: string; is_pro: boolean }>(`/users/me?_t=${Date.now()}`, token),
 
   // CV CRUD
   getCVs: (token: string | null) => apiRequest<CVListItem[]>(`/cvs/?_t=${Date.now()}`, token),
 
-  getCV: (id: string, token: string | null) => apiRequest<CVDetail>(`/cvs/${id}`, token),
+  getCV: (id: string, token: string | null) =>
+    apiRequest<CVDetail>(`/cvs/${id}?_t=${Date.now()}`, token),
 
   createCV: (
     data: { id: string; title: string; content: CVData; language?: string },

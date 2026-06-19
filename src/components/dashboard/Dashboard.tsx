@@ -62,12 +62,22 @@ const ResumeCard = ({
 
       const safeData = {
         ...rawData,
+        personal: {
+          name: '',
+          role: '',
+          summary: '',
+          email: '',
+          phone: '',
+          city: '',
+          socials: [],
+          ...((rawData.personal as Record<string, unknown>) || {}),
+        },
         experience: (rawData.experience as unknown[]) || [],
         education: (rawData.education as unknown[]) || [],
         skills: (rawData.skills as unknown[]) || [],
         projects: (rawData.projects as unknown[]) || [],
         languages: (rawData.languages as string) || '',
-        social: (rawData.social as unknown[]) || [],
+        certifications: (rawData.certifications as unknown[]) || [],
       } as unknown as CVData;
       return generateMarkdown(safeData, (cv.language.toLowerCase() as 'es' | 'en' | 'pt') || 'es');
     } catch (err) {
